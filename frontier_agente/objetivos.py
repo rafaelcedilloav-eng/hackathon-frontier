@@ -13,6 +13,12 @@ FRASE_RELATIVAS = (
     "«Hoy» que muestra la aplicación"
 )
 
+# NOTA: bloque 8 (FR-0153): frase fija con la que termina el objetivo de cada fase.
+AVISO_EN_OBJETIVO = (
+    "Si un aviso, modal o ventana emergente tapa la app, ciérralo primero "
+    "con la función cerrar_aviso (no es parte de la tarea)."
+)
+
 # NOTA: cómo llenar el formulario, por función y sin nombres de la app: listas con clic
 # (elegir_opcion), Tab entre campos de texto, y un aviso de guardado ya vale como guardado.
 GUIA_DE_ESCRITURA = (
@@ -59,7 +65,8 @@ def objetivo_resolver(intencion: Intencion) -> str:
         "con la clave candidatos: una lista con cada fila coincidente visible, donde cada fila "
         "trae identificador (el documento, NIT, ID o código visible de la fila) y campos "
         "(las parejas llave-valor que se ven en la fila), y la clave hay_mas_paginas con true o false. "
-        'Si la aplicación dice que no hay resultados, responde lectura con {"candidatos": []}.'
+        'Si la aplicación dice que no hay resultados, responde lectura con {"candidatos": []}. '
+        + AVISO_EN_OBJETIVO
     )
 
 
@@ -81,7 +88,8 @@ def objetivo_escribir(intencion: Intencion, fase: str) -> str:
     return (
         f"Estás en la fase de {fase}. {apertura} {GUIA_DE_ESCRITURA} "
         "Pulsa el control de guardar una sola vez y, al ver la confirmación "
-        "o el registro ya guardado, responde con la acción terminar."
+        "o el registro ya guardado, responde con la acción terminar. "
+        + AVISO_EN_OBJETIVO
     )
 
 
@@ -93,7 +101,9 @@ def objetivo_verificar(intencion: Intencion) -> str:
         f"Busca el registro de {intencion.entidad} por el identificador: "
         f"{pares_de_texto(intencion.identificador)}, ábrelo y responde con la acción leer "
         "y en lectura un objeto con el valor que se ve en el registro para cada una "
-        f"de estas llaves y solo esas: {llaves}."
+        f"de estas llaves y solo esas: {llaves}. "
+        "Lee cada campo por su significado, aunque la etiqueta de la pantalla se llame distinto. "
+        + AVISO_EN_OBJETIVO
     )
 
 
@@ -129,7 +139,8 @@ def objetivo_responder(intencion: Intencion) -> str:
         "Cuando tengas la respuesta con certeza, responde con la acción leer y "
         'lectura = {"respuesta": "<texto exacto>"}; con un solo dato va ese dato y '
         'con dos datos, "dato 1; dato 2" en el orden en que se preguntaron. '
-        "Si no puedes responder con certeza, responde con la acción fallar y la razón."
+        "Si no puedes responder con certeza, responde con la acción fallar y la razón. "
+        + AVISO_EN_OBJETIVO
     )
 
 
@@ -152,5 +163,6 @@ def objetivo_exportar(intencion: Intencion) -> str:
         "Pulsa el control de exportar de esa misma lista (en la acción, funcion exportar) "
         "una sola vez y, al ver el archivo generado, descargado o confirmado, "
         "responde con la acción terminar. "
-        "Si algo lo impide, responde con la acción fallar y la razón."
+        "Si algo lo impide, responde con la acción fallar y la razón. "
+        + AVISO_EN_OBJETIVO
     )

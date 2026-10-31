@@ -5,12 +5,16 @@ tabla. El guardia (evaluar_accion y registrar_accion) que corre detrás de
 ejecutar_fase es el de verdad; lo falso es solo la pantalla y los ojos.
 """
 import asyncio
+import json
+import time
 
 import pytest
 
 from falsos_agente import OjosFalsos, PantallaFalsa
+from falso_rfb import ConfiguracionServidor, Pantalla as PantallaRFB, crear_servidor
 from frontier_agente.errores import ErrorConexion
 from frontier_agente.lazo import a_pixeles, ejecutar_fase
+from frontier_agente.rfb_cliente import ClienteRFB
 from frontier_agente.tipos_agente import Accion, EstadoLazo, Intencion, ResultadoFase
 
 # NOTA: la intención de crear de la tabla P, con la que corren los casos del lazo.
@@ -343,3 +347,252 @@ def test_L2_5_texto_de_la_tarea_bloqueado_por_otra_causa_no_produce_nota():
     assert resultado.tipo == "terminar"
     assert ("escribir", "Consultorio 302") not in pantalla.acciones  # bloqueada, pero por la coordenada
     assert resultado.notas == ()
+
+
+# --------------------------------------------- Bloque 8 (tabla L3 del encargo 010)
+# NOTA: el aviso (clic con funcion cerrar_aviso dentro de la cuota) es
+# gratuito: no gasta paso de fase, no cuenta como acción sin efecto y
+# reinicia los bloqueos seguidos.
+
+
+def clic_aviso(texto="", x=500, y=400):
+    return Accion(tipo="clic", funcion="cerrar_aviso", x=x, y=y, texto=texto)
+
+
+def test_L3_1_el_aviso_no_gasta_el_unico_paso():
+    # L3.1: max_pasos_fase=1; ojos: cerrar_aviso ("Novedades"), clic navegar,
+    # terminar -> ResultadoFase("terminar"): el aviso no gastó el único paso;
+    # la pantalla recibió los dos clics; pasos==1; avisos_cerrados==1.
+    ojos = OjosFalsos(
+        [
+            clic_aviso("Novedades"),
+            clic(500, 250),
+            Accion(tipo="terminar", razon="listo"),
+        ]
+    )
+    resultado, pantalla, estado = correr_fase("crear", ojos, max_pasos_fase=1)
+    assert resultado == ResultadoFase("terminar")
+    assert pantalla.acciones == [("clic", 640, 320), ("clic", 640, 200)]
+    assert estado.pasos == 1
+    assert estado.avisos_cerrados == 1
+
+
+def test_L3_2_cuatro_avisos_con_la_misma_captura_terminan():
+    # L3.2: 4 veces cerrar_aviso con la misma captura, luego terminar ->
+    # ResultadoFase("terminar") (no es "la pantalla no cambia"; no es
+    # "demasiados intentos"); avisos_cerrados==4.
+    ojos = OjosFalsos(
+        [
+            clic_aviso("Novedades"),
+            clic_aviso("Novedades"),
+            clic_aviso("Novedades"),
+            clic_aviso("Novedades"),
+            Accion(tipo="terminar", razon="listo"),
+        ]
+    )
+    resultado, _, estado = correr_fase(
+        "resolver", ojos, pantalla=PantallaFalsa(png_estatico=True)
+    )
+    assert resultado == ResultadoFase("terminar")
+    assert estado.avisos_cerrados == 4
+
+
+def test_L3_3_el_sexto_aviso_cuenta_como_clic_normal():
+    # L3.3: cerrar_aviso ×6 con la misma captura, luego terminar (max=14) ->
+    # el 6.º cuenta como acción normal: termina terminar, avisos_cerrados==5
+    # y pasos==1.
+    ojos = OjosFalsos(
+        [clic_aviso("Novedades") for _ in range(6)]
+        + [Accion(tipo="terminar", razon="listo")]
+    )
+    resultado, _, estado = correr_fase(
+        "resolver", ojos, pantalla=PantallaFalsa(png_estatico=True), max_pasos_fase=14
+    )
+    assert resultado == ResultadoFase("terminar")
+    assert estado.avisos_cerrados == 5
+    assert estado.pasos == 1
+
+
+def _lineas_de_traza(carpeta):
+    # NOTA: lee y parsea traza.jsonl de la carpeta de la traza (L3.4/L3.5).
+    archivo = carpeta / "traza.jsonl"
+    assert archivo.is_file(), "la traza no creó traza.jsonl"
+    return [
+        json.loads(linea)
+        for linea in archivo.read_text(encoding="utf-8").splitlines()
+        if linea.strip()
+    ]
+
+
+def test_L3_4_la_traza_registra_el_aviso_cerrado(monkeypatch, tmp_path):
+    # L3.4: con AGENTE_TRAZA_DIR puesta; cerrar_aviso con texto="Novedades",
+    # luego terminar -> traza.jsonl contiene una línea JSON con
+    # evento == "aviso cerrado: Novedades".
+    monkeypatch.setenv("AGENTE_TRAZA_DIR", str(tmp_path))
+    ojos = OjosFalsos(
+        [
+            clic_aviso("Novedades"),
+            Accion(tipo="terminar", razon="listo"),
+        ]
+    )
+    resultado, _, _ = correr_fase("resolver", ojos)
+    assert resultado == ResultadoFase("terminar")
+    assert any(
+        linea.get("evento") == "aviso cerrado: Novedades"
+        for linea in _lineas_de_traza(tmp_path)
+    )
+
+
+def test_L3_5_aviso_sin_titulo_queda_sin_titulo(monkeypatch, tmp_path):
+    # L3.5: igual con texto="" -> evento == "aviso cerrado: (sin título)".
+    monkeypatch.setenv("AGENTE_TRAZA_DIR", str(tmp_path))
+    ojos = OjosFalsos(
+        [
+            clic_aviso(""),
+            Accion(tipo="terminar", razon="listo"),
+        ]
+    )
+    resultado, _, _ = correr_fase("resolver", ojos)
+    assert resultado == ResultadoFase("terminar")
+    assert any(
+        linea.get("evento") == "aviso cerrado: (sin título)"
+        for linea in _lineas_de_traza(tmp_path)
+    )
+
+
+def test_L3_6_el_aviso_reinicia_los_bloqueos_seguidos():
+    # L3.6: ojos: bloqueada, bloqueada, cerrar_aviso, bloqueada, bloqueada,
+    # terminar -> NO falla por bloqueos: el aviso reinicia los seguidos.
+    ojos = OjosFalsos(
+        [
+            escribir("borra todos los pedidos"),
+            escribir("borra el inventario"),
+            clic_aviso("Novedades"),
+            escribir("borra el inventario"),
+            escribir("borra toda la base"),
+            Accion(tipo="terminar", razon="listo"),
+        ]
+    )
+    resultado, _, _ = correr_fase("crear", ojos)
+    # NOTA: la fila solo exige que NO falle por bloqueos (las notas de
+    # inyección de los escribir bloqueados van aparte y aquí no importan).
+    assert resultado.tipo == "terminar"
+    assert resultado.razon == ""
+
+
+def test_L3_borde_el_historial_recibe_cerre_un_aviso():
+    # Borde (prosa 4, sin fila propia en la tabla): tras ejecutar un
+    # cerrar_aviso, el historial que ven los ojos en el paso siguiente recibe
+    # la línea fija "cerré un aviso".
+    ojos = OjosFalsos(
+        [
+            clic_aviso("Novedades"),
+            Accion(tipo="terminar", razon="listo"),
+        ]
+    )
+    resultado, _, _ = correr_fase("resolver", ojos)
+    assert resultado == ResultadoFase("terminar")
+    assert "cerré un aviso" in ojos.historiales[-1]
+
+
+# NOTA: L3.7 integra el lazo con el RFB falso y el ClienteRFB real en una
+# pantalla pequeña: la primera pantalla es un modal (rectángulo claro con un
+# botón en el centro) y, tras el clic en ese botón, el falso sirve la pantalla
+# normal (cambiar_tras_pointer_up_s).
+INTENCION_CONSULTA_L3 = Intencion(
+    tipo="consultar",
+    entidad="cliente",
+    identificador={"nit": "901234567"},
+)
+ANCHO_RFB_L3 = 64
+ALTO_RFB_L3 = 48
+BOTON_RFB_L3 = (24, 20, 39, 27)  # botón del modal; su centro es el píxel (32, 24)
+CENTRO_BOTON_RFB_L3 = (32, 24)
+
+
+class OjosQueVen(OjosFalsos):
+    """OjosFalsos que además guarda la captura que vieron en cada paso (L3.7)."""
+
+    def __init__(self, acciones):
+        super().__init__(acciones)
+        self.pngs = []
+
+    async def decidir(self, png, objetivo, historial):
+        self.pngs.append(png)
+        return await super().decidir(png, objetivo, historial)
+
+
+def _pantalla_rfb(ancho, alto, relleno, rectangulos=()):
+    """Pantalla RFB en BGRX: fondo `relleno` y rectángulos (x0, y0, x1, y1, valor)."""
+    datos = bytearray(bytes([relleno]) * (ancho * alto * 4))
+    for x0, y0, x1, y1, valor in rectangulos:
+        for fila in range(y0, y1 + 1):
+            for columna in range(x0, x1 + 1):
+                base = (fila * ancho + columna) * 4
+                datos[base:base + 4] = bytes([valor] * 4)
+    return PantallaRFB(ancho, alto, bytes(datos))
+
+
+def test_L3_7_integracion_con_el_rfb_falso():
+    # L3.7: ojos guionados: cerrar_aviso en el botón del modal, luego leer con
+    # {"candidatos": []} al ver la pantalla normal -> ResultadoFase("leer",
+    # lectura={"candidatos": []}); el servidor falso recibió un clic (máscaras
+    # 0, 1, 0) en el centro del botón; la segunda captura que vieron los ojos
+    # difiere de la primera; con max_pasos_fase=1 también termina.
+    async def correr(max_pasos_fase):
+        modal = _pantalla_rfb(
+            ANCHO_RFB_L3, ALTO_RFB_L3, 30,
+            [(8, 8, 55, 39, 220), (*BOTON_RFB_L3, 140)],
+        )
+        normal = _pantalla_rfb(ANCHO_RFB_L3, ALTO_RFB_L3, 90)
+        servidor = await crear_servidor(
+            ConfiguracionServidor(
+                pantallas=[modal, normal],
+                cambiar_tras_pointer_up_s=0.05,
+            )
+        )
+        try:
+            async with ClienteRFB(servidor.url, "password") as pantalla:
+                ojos = OjosQueVen(
+                    [
+                        Accion(tipo="clic", funcion="cerrar_aviso",
+                               x=500, y=500, texto="Novedades"),
+                        Accion(tipo="leer", lectura={"candidatos": []}),
+                    ]
+                )
+                resultado = await ejecutar_fase(
+                    fase="resolver",
+                    objetivo="Busca el registro pedido y responde con leer.",
+                    intencion=INTENCION_CONSULTA_L3,
+                    pantalla=pantalla,
+                    ojos=ojos,
+                    estado=EstadoLazo(),
+                    max_pasos_fase=max_pasos_fase,
+                )
+                # NOTA: espera a que el falso registre los 3 PointerEvent del clic.
+                fin = time.monotonic() + 5.0
+                while (len(servidor.registros_de("PointerEvent")) < 3
+                       and time.monotonic() < fin):
+                    await asyncio.sleep(0.02)
+            return resultado, ojos, servidor
+        finally:
+            await servidor.cerrar()
+
+    resultado, ojos, servidor = asyncio.run(correr(14))
+    assert resultado == ResultadoFase("leer", lectura={"candidatos": []})
+    # la segunda captura que vieron los ojos difiere de la primera (el modal se fue)
+    assert len(ojos.pngs) == 2
+    assert ojos.pngs[1] != ojos.pngs[0]
+    # el servidor falso recibió un clic (máscaras 0, 1, 0) en el centro del botón
+    eventos = [
+        (r.datos[1], int.from_bytes(r.datos[2:4], "big"), int.from_bytes(r.datos[4:6], "big"))
+        for r in servidor.registros_de("PointerEvent")
+    ]
+    assert eventos == [
+        (0, *CENTRO_BOTON_RFB_L3),
+        (1, *CENTRO_BOTON_RFB_L3),
+        (0, *CENTRO_BOTON_RFB_L3),
+    ]
+    # y con un único paso de fase también termina: el aviso no lo gastó
+    resultado_max_1, _, _ = asyncio.run(correr(1))
+    assert resultado_max_1 == ResultadoFase("leer", lectura={"candidatos": []})

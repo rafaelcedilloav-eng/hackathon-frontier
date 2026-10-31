@@ -223,8 +223,13 @@ class ServidorRFBFalso:
         """La pantalla que toca servir ahora, según la configuración."""
         cfg = self.config
         base = cfg.pantallas[0] if cfg.pantallas else Pantalla(64, 48, bytes(64 * 48 * 4))
-        if cfg.cambiar_tras_pointer_up_s > 0 and self._t_pointer_up is not None:
-            if time.monotonic() - self._t_pointer_up >= cfg.cambiar_tras_pointer_up_s:
+        if cfg.cambiar_tras_pointer_up_s > 0:
+            # NOTA (encargo 010, L3.7): en este modo pantallas[0] se sirve
+            # hasta cambiar_tras_pointer_up_s tras un pointer-up y luego
+            # pantallas[1]; la secuencia por actualizaciones no aplica (así
+            # una pantalla inicial puede capturarse varias veces antes del clic).
+            if (self._t_pointer_up is not None
+                    and time.monotonic() - self._t_pointer_up >= cfg.cambiar_tras_pointer_up_s):
                 return cfg.pantallas[1]
             return cfg.pantallas[0]
         if cfg.generar_distintas:
@@ -347,6 +352,10 @@ class ServidorRFBFalso:
         self._updates_servidos += 1
         if cfg.generar_distintas:
             self._contador_distintas += 1
+        elif cfg.cambiar_tras_pointer_up_s > 0:
+            # NOTA (encargo 010, L3.7): en este modo la pantalla la decide el
+            # pointer-up, no la secuencia por actualizaciones.
+            pass
         elif self._indice_pantalla < len(cfg.pantallas) - 1:
             self._indice_pantalla += 1
 

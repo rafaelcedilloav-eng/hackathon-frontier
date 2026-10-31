@@ -122,3 +122,48 @@ def test_OB9_objetivo_exportar_filtra_y_pulsa_una_sola_vez():
     texto = objetivo_exportar(intencion)
     for trozo in ("septiembre", "Hoy", "exportar", "una sola vez"):
         assert trozo in texto, f"falta {trozo!r} en el objetivo de exportar"
+
+
+# --------------------------------------------- Bloque 8 (tabla OB4 del encargo 010)
+# NOTA: AVISO_EN_OBJETIVO aún no existe: se importa dentro de cada prueba
+# nueva para que OB1-OB9 sigan corriendo y solo fallen las nuevas.
+
+
+def test_OB10_todos_los_objetivos_terminan_con_el_aviso():
+    # OB10: cada una de las cinco funciones (objetivo_resolver,
+    # objetivo_escribir —crear y modificar—, objetivo_verificar,
+    # objetivo_responder, objetivo_exportar) termina con la frase fija
+    # AVISO_EN_OBJETIVO (constante única en objetivos.py).
+    from frontier_agente.objetivos import (
+        AVISO_EN_OBJETIVO,
+        objetivo_exportar,
+        objetivo_responder,
+    )
+
+    assert AVISO_EN_OBJETIVO == (
+        "Si un aviso, modal o ventana emergente tapa la app, ciérralo primero "
+        "con la función cerrar_aviso (no es parte de la tarea)."
+    )
+    intencion_consultar = Intencion(
+        tipo="consultar",
+        pregunta="¿Cuántos registros hay con filtro activo?",
+        filtros={"estado": "activo"},
+    )
+    intencion_exportar = Intencion(tipo="exportar", filtros={"desde": "septiembre"})
+    objetivos = (
+        objetivo_resolver(INTENCION_CREAR),
+        objetivo_escribir(INTENCION_CREAR, "crear"),
+        objetivo_escribir(INTENCION_MODIFICAR, "modificar"),
+        objetivo_verificar(INTENCION_CREAR),
+        objetivo_responder(intencion_consultar),
+        objetivo_exportar(intencion_exportar),
+    )
+    for texto in objetivos:
+        assert texto.rstrip().endswith(AVISO_EN_OBJETIVO), texto[-80:]
+
+
+def test_OB11_objetivo_verificar_habla_del_significado():
+    # OB11: objetivo_verificar dice que cada campo se lee por su significado,
+    # aunque la etiqueta de la pantalla se llame distinto (palabra "significado").
+    texto = objetivo_verificar(INTENCION_CREAR)
+    assert "significado" in texto

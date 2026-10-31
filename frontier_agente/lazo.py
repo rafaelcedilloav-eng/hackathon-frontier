@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Protocol
 
-from frontier_agente.guarda import evaluar_accion, registrar_accion
+from frontier_agente.guarda import es_aviso_gratuito, evaluar_accion, registrar_accion
 from frontier_agente.tipos_agente import (
     ESCALA_MODELO,
     Accion,
@@ -31,6 +31,11 @@ PLANTILLA_NOTA_BLOQUEO = "una instrucción en pantalla pedía escribir «{texto}
 RAZON_BLOQUEOS = "demasiados intentos bloqueados"
 RAZON_SIN_PASOS = "se agotaron los pasos"
 RAZON_PANTALLA_INMOVIL = "la pantalla no cambia"
+# NOTA: bloque 8: el clic gratuito que cierra un aviso o modal (FR-0153).
+LINEA_AVISO_CERRADO = "cerré un aviso"
+PLANTILLA_EVENTO_AVISO = "aviso cerrado: {titulo}"
+TITULO_SIN_AVISO = "(sin título)"
+CLAVE_EVENTO = "evento"
 
 # NOTA: traza de depuración: la carpeta la fija AGENTE_TRAZA_DIR, que el agente
 # pone por defecto en producción (logs/traza_<marca>); en pruebas puede faltar.
@@ -124,6 +129,17 @@ class TrazaDeFase:
             linea[CLAVE_VECES] = accion.veces
         self._agregar_linea(linea)
 
+    def registrar_aviso(self, titulo: str) -> None:
+        # NOTA: bloque 8: línea propia del aviso cerrado (clave evento); pasa por
+        # _agregar_linea para que un fallo de disco nunca rompa la tarea.
+        if not self._activa:
+            return
+        self._agregar_linea({
+            "fase": self._fase,
+            "paso": self._paso,
+            CLAVE_EVENTO: PLANTILLA_EVENTO_AVISO.format(titulo=titulo),
+        })
+
     def _escribir_bytes(self, nombre: str, contenido: bytes) -> None:
         # NOTA: un archivo por captura; si falla, avisa una vez y desactiva la traza.
         try:
@@ -162,31 +178,67 @@ async def ejecutar_fase(fase: str, objetivo: str, intencion: Intencion,
     anterior: tuple[bytes, bool] | None = None
     sin_efecto = 0
     while True:
-        if pasos_en_fase >= max_pasos_fase:
-            return ResultadoFase("fallar", razon=RAZON_SIN_PASOS, notas=tuple(notas))
         png, sin_efecto, falla = await _capturar(pantalla, historial, anterior, sin_efecto, notas)
         if falla is not None:
             return falla
         traza.nuevo_paso(png)
         accion = await ojos.decidir(png, objetivo, historial)
-        if accion.tipo in TIPOS_FINALES:
-            traza.registrar(accion, None)
-            razon = accion.razon if accion.tipo == "fallar" else ""  # NOTA: solo fallar lleva razón (L2).
-            return ResultadoFase(accion.tipo, lectura=accion.lectura, razon=razon, notas=tuple(notas))
-        veredicto = evaluar_accion(accion, intencion, estado)
-        traza.registrar(accion, veredicto)
-        if not veredicto.permitida:
-            _registrar_bloqueo(accion, veredicto, estado, historial, notas)
-            if estado.bloqueos >= MAX_BLOQUEOS:
-                return ResultadoFase("fallar", razon=RAZON_BLOQUEOS, notas=tuple(notas))
-            anterior = (png, False)
-            continue
-        await _actuar(accion, pantalla)
-        registrar_accion(accion, intencion, estado)
-        estado.bloqueos = 0  # NOTA: el tope cuenta bloqueos SEGUIDOS: una acción ejecutada reinicia (L2.1).
-        historial.append(_linea_de_lo_hecho(accion, pantalla))
-        pasos_en_fase += 1
-        anterior = (png, True)
+        resultado, anterior, gasto = await _manejar_accion(
+            accion, png, intencion, estado, pantalla, traza, historial, notas,
+            pasos_en_fase=pasos_en_fase, max_pasos_fase=max_pasos_fase,
+        )
+        if resultado is not None:
+            return resultado
+        pasos_en_fase += gasto
+
+
+async def _manejar_accion(
+    accion: Accion,
+    png: bytes,
+    intencion: Intencion,
+    estado: EstadoLazo,
+    pantalla: Pantalla,
+    traza: TrazaDeFase,
+    historial: list[str],
+    notas: list[str],
+    *,
+    pasos_en_fase: int,
+    max_pasos_fase: int,
+) -> tuple[ResultadoFase | None, tuple[bytes, bool], int]:
+    # NOTA: vigila y ejecuta la acción ya decidida; devuelve (el cierre de la fase
+    # si lo hay, el `anterior` nuevo y los pasos de fase que gastó).
+    if accion.tipo in TIPOS_FINALES:
+        return _resultado_terminal(accion, traza, notas), (png, False), 0
+    veredicto = evaluar_accion(accion, intencion, estado)
+    gratuita = es_aviso_gratuito(accion, estado)  # NOTA: antes de registrar: la cuota cambia al cerrar.
+    if not gratuita and pasos_en_fase >= max_pasos_fase:
+        return ResultadoFase("fallar", razon=RAZON_SIN_PASOS, notas=tuple(notas)), (png, False), 0
+    traza.registrar(accion, veredicto)
+    if not veredicto.permitida:
+        if _registrar_bloqueo(accion, veredicto, estado, historial, notas):
+            return ResultadoFase("fallar", razon=RAZON_BLOQUEOS, notas=tuple(notas)), (png, False), 0
+        return None, (png, False), 0
+    await _actuar(accion, pantalla)
+    registrar_accion(accion, intencion, estado)
+    estado.bloqueos = 0  # NOTA: el tope cuenta bloqueos SEGUIDOS: una acción ejecutada reinicia (L2.1).
+    if gratuita:
+        traza.registrar_aviso(_titulo_de_aviso(accion))
+        historial.append(LINEA_AVISO_CERRADO)
+        return None, (png, False), 0  # NOTA: el aviso gratuito no gasta paso ni cuenta sin efecto.
+    historial.append(_linea_de_lo_hecho(accion, pantalla))
+    return None, (png, True), 1
+
+
+def _resultado_terminal(accion: Accion, traza: TrazaDeFase, notas: list[str]) -> ResultadoFase:
+    # NOTA: leer/terminar/fallar cierran la fase tal cual; solo fallar lleva razón (L2).
+    traza.registrar(accion, None)
+    razon = accion.razon if accion.tipo == "fallar" else ""
+    return ResultadoFase(accion.tipo, lectura=accion.lectura, razon=razon, notas=tuple(notas))
+
+
+def _titulo_de_aviso(accion: Accion) -> str:
+    # NOTA: el título del aviso para la traza; sin texto va "(sin título)" (L3.5).
+    return accion.texto or TITULO_SIN_AVISO
 
 
 async def _capturar(pantalla: Pantalla, historial: list[str], anterior: tuple | None,
@@ -232,13 +284,15 @@ def _registrar_bloqueo(
     estado: EstadoLazo,
     historial: list[str],
     notas: list[str],
-) -> None:
+) -> bool:
     # NOTA: nada llega a la pantalla; el historial y los bloqueos crecen, y las
-    # órdenes de pantalla que se ignoraron quedan como nota para el resumen.
+    # órdenes de pantalla que se ignoraron quedan como nota para el resumen;
+    # devuelve True si ya se alcanzó el tope de bloqueos seguidos.
     estado.bloqueos += 1
     historial.append(PREFIJO_BLOQUEADA + veredicto.motivo)
     if veredicto.motivo == MOTIVO_TEXTO_AJENO:
         notas.append(PLANTILLA_NOTA_BLOQUEO.format(texto=accion.texto))
+    return estado.bloqueos >= MAX_BLOQUEOS
 
 
 def _linea_de_lo_hecho(accion: Accion, pantalla: Pantalla) -> str:

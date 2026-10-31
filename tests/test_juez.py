@@ -78,3 +78,16 @@ def test_j2_3_exento_ausente_en_la_lectura():
 def test_j2_borde_exento_que_no_esta_en_esperado():
     # Borde (prosa): una llave exenta que no está en el esperado no produce nada.
     assert comparar_campos({"a": "1"}, {"a": "1"}, exentos=("z",)) == []
+
+
+# --- Bloque 8 (encargo 010) · tabla J4: el juez compara por la llave, no por la etiqueta ---
+
+
+def test_j4_1_compara_por_la_llave_y_el_valor_no_por_la_etiqueta():
+    # J4.1 (regresión, sin cambio de código): la etiqueta de pantalla
+    # «Celular» es irrelevable; el valor leído se compara por la llave de la
+    # tarea ("telefono") y los separadores del número no importan.
+    assert comparar_campos(
+        {"telefono": "3157654321"},
+        {"telefono": "315 765 4321"},
+    ) == []

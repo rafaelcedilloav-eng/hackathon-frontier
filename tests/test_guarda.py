@@ -484,3 +484,118 @@ def test_G2_17_el_mes_solo_es_palabra_de_la_tarea():
     # tarea, como siempre: no necesita la cláusula de fecha).
     v = evaluar_accion(Accion(tipo="escribir", texto="septiembre"), INTENCION_FECHA, estado_crear())
     assert v.permitida is True
+
+
+# --------------------------------------------- Bloque 8 (tabla G3 del encargo 010)
+# NOTA: es_aviso_gratuito y MAX_AVISOS_POR_TAREA aún no existen: se importan
+# dentro de cada prueba que los usa para que G1-G2 sigan corriendo y solo
+# fallen las nuevas.
+
+
+def test_G3_1_aviso_gratuito_pasa_el_tope_de_pasos():
+    # G3.1: clic cerrar_aviso (x=500, y=400) con pasos=40 y avisos_cerrados=0
+    # -> permitida: la gratuita no se bloquea por el tope de pasos.
+    v = evaluar_accion(
+        Accion(tipo="clic", funcion="cerrar_aviso", x=500, y=400),
+        intencion_crear(),
+        estado_crear(pasos=40, avisos_cerrados=0),
+    )
+    assert v.permitida is True
+
+
+def test_G3_2_aviso_fuera_de_cuota_se_bloquea_por_pasos():
+    # G3.2: igual con avisos_cerrados=5 -> bloqueada y el motivo contiene
+    # "tope de pasos" (fuera de cuota es un clic como cualquier otro).
+    v = evaluar_accion(
+        Accion(tipo="clic", funcion="cerrar_aviso", x=500, y=400),
+        intencion_crear(),
+        estado_crear(pasos=40, avisos_cerrados=5),
+    )
+    assert v.permitida is False
+    assert "tope de pasos" in v.motivo
+
+
+def test_G3_3_registrar_aviso_gratuito_solo_cuenta_el_aviso():
+    # G3.3: registrar un clic cerrar_aviso con avisos_cerrados=0 y pasos=3 ->
+    # avisos_cerrados==1, pasos==3, guardados==0, campos_escritos==set()
+    # (nada más: ni pasos, ni guardados, ni campos).
+    estado = estado_crear(avisos_cerrados=0, pasos=3)
+    registrar_accion(
+        Accion(tipo="clic", funcion="cerrar_aviso", x=500, y=400),
+        intencion_crear(),
+        estado,
+    )
+    assert estado.avisos_cerrados == 1
+    assert estado.pasos == 3
+    assert estado.guardados == 0
+    assert estado.campos_escritos == set()
+
+
+def test_G3_4_registrar_aviso_sin_cuota_cuenta_paso():
+    # G3.4: con avisos_cerrados=5 y pasos=3 -> el clic es una acción normal:
+    # avisos_cerrados sigue en 5 y pasos pasa a 4.
+    estado = estado_crear(avisos_cerrados=5, pasos=3)
+    registrar_accion(
+        Accion(tipo="clic", funcion="cerrar_aviso", x=500, y=400),
+        intencion_crear(),
+        estado,
+    )
+    assert estado.avisos_cerrados == 5
+    assert estado.pasos == 4
+
+
+def test_G3_5_aviso_con_coordenada_fuera_bloqueada():
+    # G3.5: clic cerrar_aviso con x=1001 -> bloqueada: las coordenadas se
+    # validan siempre, también para el aviso gratuito.
+    v = evaluar_accion(
+        Accion(tipo="clic", funcion="cerrar_aviso", x=1001, y=400),
+        intencion_crear(),
+        estado_crear(avisos_cerrados=0, pasos=0),
+    )
+    assert v.permitida is False
+
+
+def test_G3_6_aviso_permitido_en_todas_las_fases():
+    # G3.6: clic cerrar_aviso permitido en cada fase, de resolver a exportar.
+    for fase in ("resolver", "crear", "modificar", "verificar", "responder", "exportar"):
+        v = evaluar_accion(
+            Accion(tipo="clic", funcion="cerrar_aviso", x=500, y=400),
+            intencion_crear(),
+            estado_crear(fase=fase, avisos_cerrados=0, pasos=0),
+        )
+        assert v.permitida is True, fase
+
+
+def test_G3_7_es_aviso_gratuito_solo_el_clic_en_cuota():
+    # G3.7: (clic, cerrar_aviso, 0)->True; (clic, cerrar_aviso, 5)->False;
+    # (clic, navegar, 0)->False; (tecla, cerrar_aviso, 0)->False.
+    from frontier_agente.guarda import MAX_AVISOS_POR_TAREA, es_aviso_gratuito
+
+    assert MAX_AVISOS_POR_TAREA == 5
+    assert es_aviso_gratuito(
+        Accion(tipo="clic", funcion="cerrar_aviso", x=500, y=400),
+        estado_crear(avisos_cerrados=0),
+    )
+    assert not es_aviso_gratuito(
+        Accion(tipo="clic", funcion="cerrar_aviso", x=500, y=400),
+        estado_crear(avisos_cerrados=5),
+    )
+    assert not es_aviso_gratuito(
+        Accion(tipo="clic", funcion="navegar", x=500, y=400),
+        estado_crear(avisos_cerrados=0),
+    )
+    assert not es_aviso_gratuito(
+        Accion(tipo="tecla", tecla="Esc", funcion="cerrar_aviso"),
+        estado_crear(avisos_cerrados=0),
+    )
+
+
+def test_G3_8_escribir_con_cerrar_aviso_bloqueada():
+    # G3.8: escribir "borra todo" con funcion="cerrar_aviso" -> bloqueada:
+    # la etiqueta no exime una escritura ajena a la tarea.
+    v = evaluar_accion(
+        Accion(tipo="escribir", funcion="cerrar_aviso", texto="borra todo"),
+        intencion_crear(),
+        estado_crear(avisos_cerrados=0),
+    )
+    assert v.permitida is False

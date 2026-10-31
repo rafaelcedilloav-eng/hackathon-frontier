@@ -19,6 +19,10 @@ from frontier_agente.tipos_agente import (
 
 # NOTA: límites del lazo y del clic; las coordenadas van en escala 0-1000.
 MAX_PASOS_TOTAL = 40
+# NOTA: bloque 8 (FR-0153): el clic que cierra un aviso o modal es gratuito
+# hasta este tope por tarea; fuera de cuota es un clic como cualquier otro.
+FUNCION_CERRAR_AVISO = "cerrar_aviso"
+MAX_AVISOS_POR_TAREA = 5
 LIMITE_COORDENADA = 1000
 # NOTA: tras un guardado, un clic dentro de esta distancia euclídea (escala
 # 0-1000) de la posición donde se guardó se toma por un doble guardado.
@@ -55,12 +59,20 @@ FUNCION_ELEGIR_OPCION = "elegir_opcion"
 FUNCIONES_DE_ENTER = ("buscar", FUNCION_GUARDAR)
 
 
+def es_aviso_gratuito(accion: Accion, estado: EstadoLazo) -> bool:
+    # NOTA: bloque 8: solo un clic cerrar_aviso dentro de la cuota por tarea es
+    # gratuito; teclas, escrituras y clics sin cuota son acciones normales.
+    if accion.tipo != "clic" or accion.funcion != FUNCION_CERRAR_AVISO:
+        return False
+    return estado.avisos_cerrados < MAX_AVISOS_POR_TAREA
+
+
 def evaluar_accion(accion: Accion, intencion: Intencion, estado: EstadoLazo) -> Veredicto:
     # NOTA: reglas en orden fijo; la primera que bloquea decide el veredicto
     # (cada regla devuelve permitida=True si no le toca bloquear).
     reglas = (
         _regla_intencion(intencion),
-        _regla_pasos(estado),
+        _regla_pasos(accion, estado),
         _regla_coordenadas(accion),
         _regla_funcion(accion),
         _regla_eliminar(accion),
@@ -88,8 +100,11 @@ def _regla_intencion(intencion: Intencion) -> Veredicto:
     return Veredicto(permitida=True)
 
 
-def _regla_pasos(estado: EstadoLazo) -> Veredicto:
-    # NOTA: el lazo no puede pasar del tope de pasos.
+def _regla_pasos(accion: Accion, estado: EstadoLazo) -> Veredicto:
+    # NOTA: el lazo no puede pasar del tope de pasos; el aviso gratuito es la
+    # única excepción (cerrar_aviso en cuota no gasta pasos).
+    if es_aviso_gratuito(accion, estado):
+        return Veredicto(permitida=True)
     if estado.pasos >= MAX_PASOS_TOTAL:
         return Veredicto(permitida=False, motivo="tope de pasos alcanzado")
     return Veredicto(permitida=True)
@@ -278,7 +293,11 @@ def _regla_tecla(accion: Accion) -> Veredicto:
 
 
 def registrar_accion(accion: Accion, intencion: Intencion, estado: EstadoLazo) -> None:
-    # NOTA: se llama solo tras una acción permitida; cuenta el paso y actualiza el estado.
+    # NOTA: se llama solo tras una acción permitida; el aviso gratuito solo
+    # consume su cuota (nada más) y el resto cuenta el paso y actualiza estado.
+    if es_aviso_gratuito(accion, estado):
+        estado.avisos_cerrados += 1
+        return
     estado.pasos += 1
     if _declara_valor_de_campo(accion):
         _marcar_campos_escritos(accion, intencion, estado)
