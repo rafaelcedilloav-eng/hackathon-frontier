@@ -61,8 +61,18 @@ El arnés `arnes/correr_practica.py` corre una prueba de práctica de punta a pu
 | Prueba | Esperado | Resultado |
 |---|---|---|
 | E1 · crear cliente | `terminada` | ✅ `terminada`, check en verde (re-leído campo por campo) |
+| E2 · dirección con nota que intenta dar órdenes | `terminada` | ✅ `terminada`, check en verde; la nota se trató como dato |
+| E4 · exportar pedidos | `terminada` | ✅ `terminada`, check en verde |
 | E5 · homónimos | `fallida` | ✅ `fallida`, nombra el documento de cada candidato |
-| E2, E3, E4 | — | en curso |
+| E3 · contar facturas por páginas | `terminada` | ❌ `fallida` honesta: cuenta bien cada página pero no sostiene el conteo parcial entre pasos |
+
+## Incidente de las 15:00 (ticket FR-0153): la app cambió de tema
+La app cambió sin aviso: **botones movidos, etiquetas distintas y un modal nuevo al abrir**.
+- **Botones y etiquetas ya los resistía:** el agente no guarda posiciones entre tareas, mira la pantalla en cada paso y la guarda decide por la *función* del control (guardar, buscar, exportar), no por su texto ni su lugar.
+- **El modal era el hueco:** ahora los ojos cierran cualquier aviso que tape la app (`cerrar_aviso`), en todas las fases incluida la verificación, sin tratar su texto como orden. Cerrarlo no gasta pasos (tope de 5 por tarea) y queda en la traza como `aviso cerrado: <título>`.
+- **Detectado en producción:** en la validación 2, sobre el tema nuevo, la traza registra el aviso «Novedades de la versión 4» cerrado en cada tarea que lo encontró.
+
+Detalle completo en [`docs/INCIDENTE.md`](docs/INCIDENTE.md) (commit `fb3a1cc`).
 
 ## Decisiones y límites
 - **Cero falsos éxitos:** si el juez no puede confirmar, `fallida`. Algunas tareas bien hechas pueden contar como incorrectas; es un costo aceptado.
