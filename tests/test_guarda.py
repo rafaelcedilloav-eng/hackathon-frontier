@@ -249,3 +249,43 @@ def test_g30_escribir_con_clic_coordenada_valida():
         estado_crear(),
     )
     assert v.permitida is True
+
+
+def test_g31_clic_repetido_en_el_control_de_guardar():
+    # El modelo guarda sin etiquetar la funcion: un clic cerca de donde ya
+    # se guardó se bloquea (distancia 20 <= 30).
+    v = evaluar_accion(
+        Accion(tipo="clic", funcion="otra", x=520, y=470),
+        intencion_crear(),
+        estado_crear(guardados=1, posicion_guardado=(500, 470)),
+    )
+    assert v.permitida is False
+    assert "ya se guardó una vez" in v.motivo
+
+
+def test_g32_clic_lejos_del_control_de_guardar():
+    # Distancia 200 > 30: es otro control, no un intento de guardar de nuevo.
+    v = evaluar_accion(
+        Accion(tipo="clic", funcion="otra", x=700, y=470),
+        intencion_crear(),
+        estado_crear(guardados=1, posicion_guardado=(500, 470)),
+    )
+    assert v.permitida is True
+
+
+def test_g33_solo_el_clic_de_guardar_fija_posicion():
+    estado = estado_crear()
+    registrar_accion(
+        Accion(tipo="clic", funcion="guardar", x=500, y=470),
+        intencion_crear(),
+        estado,
+    )
+    assert estado.posicion_guardado == (500, 470)
+
+    estado_enter = estado_crear()
+    registrar_accion(
+        Accion(tipo="tecla", tecla="Enter", funcion="guardar"),
+        intencion_crear(),
+        estado_enter,
+    )
+    assert estado_enter.posicion_guardado == ()

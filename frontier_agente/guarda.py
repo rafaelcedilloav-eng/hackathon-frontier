@@ -1,4 +1,6 @@
 """El guarda vigila cada acción antes de ejecutarse y registra el resultado."""
+import math
+
 from frontier_agente.texto import valores_iguales
 from frontier_agente.tipos_agente import (
     FUNCIONES_CONTROL,
@@ -11,6 +13,11 @@ from frontier_agente.tipos_agente import (
 # NOTA: límites del lazo y del clic; las coordenadas van en escala 0-1000.
 MAX_PASOS_TOTAL = 40
 LIMITE_COORDENADA = 1000
+# NOTA: tras un guardado, un clic dentro de esta distancia euclídea (escala
+# 0-1000) de la posición donde se guardó se toma por un doble guardado.
+DISTANCIA_SEGUNDO_GUARDADO = 30
+MOTIVO_CLIC_REPETIDO = "ya se guardó una vez: clic repetido en el control de guardar"
+COORDENADAS_GUARDADAS = 2
 FASES_DE_GUARDAR = ("crear", "modificar")
 TECLAS_SIEMPRE = ("Tab", "Esc")
 TECLAS_ENTER = "Enter"
@@ -29,6 +36,7 @@ def evaluar_accion(accion: Accion, intencion: Intencion, estado: EstadoLazo) -> 
         _regla_funcion(accion),
         _regla_eliminar(accion),
         _regla_texto_de_la_tarea(accion, intencion),
+        _regla_clic_repetido(accion, estado),
         _regla_guardar(accion, intencion, estado),
         _regla_tecla(accion),
     )
@@ -98,6 +106,23 @@ def _regla_texto_de_la_tarea(accion: Accion, intencion: Intencion) -> Veredicto:
     return Veredicto(permitida=False, motivo="el texto no está en la tarea")
 
 
+def _regla_clic_repetido(accion: Accion, estado: EstadoLazo) -> Veredicto:
+    # NOTA: regla 7a: cubre al modelo que vuelve a guardar sin etiquetar la
+    # funcion; un clic en otro control dentro de la distancia también se
+    # bloquea con el motivo claro (falso positivo aceptado y documentado).
+    if accion.tipo != "clic" or estado.guardados < 1:
+        return Veredicto(permitida=True)
+    guardado = estado.posicion_guardado
+    if len(guardado) != COORDENADAS_GUARDADAS:
+        return Veredicto(permitida=True)
+    if not all(isinstance(coordenada, (int, float)) for coordenada in guardado):
+        return Veredicto(permitida=True)
+    distancia = math.hypot(accion.x - guardado[0], accion.y - guardado[1])
+    if distancia <= DISTANCIA_SEGUNDO_GUARDADO:
+        return Veredicto(permitida=False, motivo=MOTIVO_CLIC_REPETIDO)
+    return Veredicto(permitida=True)
+
+
 def _regla_guardar(accion: Accion, intencion: Intencion, estado: EstadoLazo) -> Veredicto:
     # NOTA: la condición "clic, o tecla Enter, con funcion guardar" vive una sola
     # vez en _es_un_guardar; cualquier otra tecla con guardar se bloquea.
@@ -141,6 +166,8 @@ def registrar_accion(accion: Accion, intencion: Intencion, estado: EstadoLazo) -
         _marcar_campos_escritos(accion, intencion, estado)
     if _es_un_guardar(accion):
         estado.guardados += 1
+        if accion.tipo == "clic":
+            estado.posicion_guardado = (accion.x, accion.y)
 
 
 def _declara_valor_de_campo(accion: Accion) -> bool:
