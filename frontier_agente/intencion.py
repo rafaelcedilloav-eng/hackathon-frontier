@@ -80,11 +80,12 @@ def _motivo_tipo_otro(crudo: object) -> str:
     return f"el tipo {crudo.get('tipo')!r} no es válido"
 
 
-def _es_destructiva(tarea: str) -> bool:
+def _es_destructiva(texto: str) -> bool:
     # NOTA: busca cada verbo destructivo como palabra completa, sin distinguir
-    # mayúsculas (palabras_de ya quita acentos y pasa a minúsculas).
+    # mayúsculas (palabras_de ya quita acentos y pasa a minúsculas); sirve tanto
+    # para la tarea entera como para un valor de campos (excepción de regla 2).
     return any(
-        palabra in PALABRAS_DESTRUCTIVAS for palabra in palabras_de(tarea)
+        palabra in PALABRAS_DESTRUCTIVAS for palabra in palabras_de(texto)
     )
 
 
@@ -114,12 +115,14 @@ def _construir(
             return _fallida(tipo, motivo, revertir, tarea)
         bloques.append(bloque)
     identificador, campos, filtros = bloques
-    exentas = _llaves_exentas(crudo, campos)
+    # NOTA: las exentas declaradas van primero y la revisión añade después las
+    # de los valores que no pasan la verificación (regla 2, validación 2).
+    exentas = list(_llaves_exentas(crudo, campos))
     motivo = _revisar_valores_en_tarea(identificador, campos, filtros, exentas, tarea)
     if motivo:
         return _fallida(tipo, motivo, revertir, tarea)
     return _aplicar_reglas(
-        crudo, tipo, identificador, campos, filtros, exentas, revertir, tarea
+        crudo, tipo, identificador, campos, filtros, tuple(exentas), revertir, tarea
     )
 
 
@@ -251,19 +254,21 @@ def _revisar_valores_en_tarea(
     identificador: dict[str, str],
     campos: dict[str, str],
     filtros: dict[str, str],
-    exentas: tuple[str, ...],
+    exentas: list[str],
     tarea: str,
 ) -> str:
-    # NOTA: regla 2 del bloque 5: los campos se revisan primero (la inyección
-    # vive ahí y el motivo debe nombrarla, I2.7) y pasan con es_letra_de_valor
-    # (literal o raíz) o con su llave exenta; identificador y filtros siguen
-    # después con la comprobación literal (regla 5: no se debilitan); si un
-    # valor no pasa, el motivo lo nombra.
+    # NOTA: regla 2 (validación 2): los campos se revisan primero; un valor con
+    # palabra destructiva completa (palabra por palabra, sin acentos) falla la
+    # tarea aunque esté declarado exento («no se escribe jamás»); un valor que
+    # no pasa la verificación ya no falla: su llave pasa a exentas y el juez no
+    # la verificará; identificador y filtros siguen estrictos (regla 5).
     for llave, valor in campos.items():
+        if _es_destructiva(valor):
+            return f"el valor {valor} es destructivo: no se escribe"
         if llave in exentas:
             continue
         if not es_letra_de_valor(valor, tarea):
-            return f"el valor {valor} no está en la tarea"
+            exentas.append(llave)
     for bloque in (identificador, filtros):
         for valor in bloque.values():
             if not aparece_en_tarea(valor, tarea):

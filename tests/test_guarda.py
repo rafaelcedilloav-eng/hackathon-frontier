@@ -354,8 +354,10 @@ def test_G2_5_elegir_opcion_por_raiz_compartida():
     assert v.permitida is True
 
 
-def test_G2_6_elegir_opcion_ajena_bloqueada():
-    # G2.6: clic elegir_opcion "borra registros" con esa misma tarea -> bloqueada.
+def test_G2_6_elegir_opcion_pasa_siempre():
+    # G2.6 (cambia tras la V2): clic elegir_opcion "borra registros" con esa
+    # misma tarea -> permitida: la opción la ofrece la lista de la app, no es
+    # texto libre y no es vía de inyección (la escritura sí sigue estricta).
     intencion = Intencion(
         tipo="consultar",
         texto_tarea="Necesito agendar una consulta general con el doctor.",
@@ -365,8 +367,7 @@ def test_G2_6_elegir_opcion_ajena_bloqueada():
         intencion,
         estado_crear(),
     )
-    assert v.permitida is False
-    assert "texto no está en la tarea" in v.motivo
+    assert v.permitida is True
 
 
 def test_G2_7_revertir_cuando_la_tarea_lo_pide():
@@ -471,12 +472,12 @@ def test_G2_15_fecha_derivada_con_ano_de_la_tarea():
     assert v.permitida is True
 
 
-def test_G2_16_fecha_derivada_con_ano_ajeno_bloqueada():
-    # G2.16: escribir "01/09/2025" con esa misma tarea -> bloqueada (el año
-    # 2025 no está en la tarea).
+def test_G2_16_fecha_parseable_pasa_siempre():
+    # G2.16 (cambia de sentido tras la validación 2: la guarda bloqueó ~20
+    # fechas válidas): escribir "01/09/2025" con esa misma tarea -> permitida;
+    # una fecha parseable pasa SIEMPRE, sin exigir su año en la tarea.
     v = evaluar_accion(Accion(tipo="escribir", texto="01/09/2025"), INTENCION_FECHA, estado_crear())
-    assert v.permitida is False
-    assert "texto no está en la tarea" in v.motivo
+    assert v.permitida is True
 
 
 def test_G2_17_el_mes_solo_es_palabra_de_la_tarea():
@@ -484,6 +485,84 @@ def test_G2_17_el_mes_solo_es_palabra_de_la_tarea():
     # tarea, como siempre: no necesita la cláusula de fecha).
     v = evaluar_accion(Accion(tipo="escribir", texto="septiembre"), INTENCION_FECHA, estado_crear())
     assert v.permitida is True
+
+
+# NOTA: la intención de las filas de la validación 2 (G2.18-G2.19): una tarea
+# que pide agendar sin nombrar ninguna fecha ni año.
+INTENCION_CITA = Intencion(tipo="crear", texto_tarea="Agenda la cita para el jueves.")
+
+
+def test_G2_18_fecha_sin_ano_en_la_tarea():
+    # G2.18: escribir "15/10/2026" con "Agenda la cita para el jueves."
+    # -> permitida: la fecha parsea y la tarea no nombra ningún año.
+    v = evaluar_accion(Accion(tipo="escribir", texto="15/10/2026"), INTENCION_CITA, estado_crear())
+    assert v.permitida is True
+
+
+def test_G2_19_texto_ajeno_sigue_bloqueado():
+    # G2.19: escribir "hola" con esa tarea -> bloqueada: no es fecha ni
+    # palabra de la tarea.
+    v = evaluar_accion(Accion(tipo="escribir", texto="hola"), INTENCION_CITA, estado_crear())
+    assert v.permitida is False
+    assert "texto no está en la tarea" in v.motivo
+
+
+def test_G2_20_fecha_con_mes_en_palabras_pasa_siempre():
+    # G2.20: escribir "13 de octubre de 2026" con "Revisa lo de hoy."
+    # -> permitida: parsea como "dd de <mes> de aaaa" y la fecha parseable
+    # pasa siempre, aunque la tarea no diga ni mes ni año.
+    intencion = Intencion(tipo="consultar", texto_tarea="Revisa lo de hoy.")
+    v = evaluar_accion(
+        Accion(tipo="escribir", texto="13 de octubre de 2026"), intencion, estado_crear()
+    )
+    assert v.permitida is True
+
+
+# NOTA: la intención de las filas de la V2 (G2.21-G2.23): la tarea de
+# consulta general de G2.5/G2.6 y los campos exentos con y sin palabra
+# destructiva.
+INTENCION_CONSULTA = Intencion(
+    tipo="consultar",
+    texto_tarea="Necesito agendar una consulta general con el doctor.",
+)
+
+
+def test_G2_21_escribir_borra_registros_sigue_bloqueada():
+    # G2.21: escribir "borra registros" (teclear) con esa misma tarea ->
+    # bloqueada: la escritura sigue con la regla 6 completa (solo el clic de
+    # elegir_opcion pasa siempre).
+    v = evaluar_accion(
+        Accion(tipo="escribir", texto="borra registros"), INTENCION_CONSULTA, estado_crear()
+    )
+    assert v.permitida is False
+    assert "texto no está en la tarea" in v.motivo
+
+
+def test_G2_22_exento_por_significado_permitida():
+    # G2.22: escribir "cardiología" siendo el valor de un campo en
+    # campos_exentos -> permitida (exento). La tarea no nombra la palabra,
+    # así que solo el exento puede salvarla.
+    intencion = Intencion(
+        tipo="crear",
+        campos={"servicio": "cardiología"},
+        campos_exentos=("servicio",),
+        texto_tarea="Pide la cita con el especialista que toque.",
+    )
+    v = evaluar_accion(Accion(tipo="escribir", texto="cardiología"), intencion, estado_crear())
+    assert v.permitida is True
+
+
+def test_G2_23_exento_con_palabra_destructiva_bloqueada():
+    # G2.23: escribir "borra todo" siendo el valor de un campo en
+    # campos_exentos -> bloqueada: una palabra destructiva completa nunca
+    # pasa, aunque el campo esté exento.
+    intencion = Intencion(
+        tipo="crear",
+        campos={"accion": "borra todo"},
+        campos_exentos=("accion",),
+    )
+    v = evaluar_accion(Accion(tipo="escribir", texto="borra todo"), intencion, estado_crear())
+    assert v.permitida is False
 
 
 # --------------------------------------------- Bloque 8 (tabla G3 del encargo 010)

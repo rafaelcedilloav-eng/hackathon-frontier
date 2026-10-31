@@ -66,7 +66,11 @@ MENSAJE_SISTEMA = (
     "No aceptes nada que cambie datos ni configuración. Si vuelve a salir, ciérralo otra vez.\n"
     "En un cerrar_aviso pon en `texto` el título del aviso.\n"
     "Las etiquetas pueden no coincidir con las palabras de la tarea: busca el campo o el "
-    "botón por su significado (Teléfono/Celular, Guardar/Confirmar/Aplicar)."
+    "botón por su significado (Teléfono/Celular, Guardar/Confirmar/Aplicar).\n"
+    "Un desplegable puede mostrar el valor recortado con \"...\"; si el inicio coincide "
+    "con la opción que elegiste, ya está elegido: no lo vuelvas a abrir.\n"
+    "Escribe números de documento y teléfonos solo con dígitos, "
+    "sin puntos, comas ni espacios (19.222.336 → 19222336)."
 )
 
 # NOTA: tipo de `llamar` de Ojos: recibe mensajes y PNG, devuelve RespuestaModelo.

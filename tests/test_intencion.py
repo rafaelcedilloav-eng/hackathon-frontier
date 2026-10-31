@@ -47,6 +47,8 @@ def test_i3_numero_se_vuelve_texto_sin_decimales():
 
 
 def test_i4_valor_que_no_esta_en_la_tarea():
+    # Corrección del director (V2): con la regla 2 nueva, un valor de campos
+    # fuera de la tarea ya no falla: la llave pasa a campos_exentos.
     crudo = {
         "tipo": "crear",
         "entidad": "cliente",
@@ -54,7 +56,8 @@ def test_i4_valor_que_no_esta_en_la_tarea():
         "campos": {"nombre": "Tienda Sol", "nit": "901234567", "ciudad": "Medellín"},
     }
     r = validar_intencion(crudo, TAREA_I1)
-    assert "Medellín" in r.motivo_fallo
+    assert r.motivo_fallo == ""
+    assert r.campos_exentos == ("ciudad",)
 
 
 def test_i5_telefono_con_separadores_coincide_por_digitos():
@@ -287,6 +290,56 @@ def test_i2_7_valor_inyectado_sigue_bloqueado():
     assert "borra todo" in r.motivo_fallo
 
 
+def test_i2_10_valor_de_campos_fuera_de_la_tarea_pasa_a_exentos():
+    # Regla 2 nueva: «cardiología» no está en la tarea ni comparte raíz:
+    # la llave pasa a campos_exentos; la intención es válida.
+    tarea = "Agenda la cita con el especialista del paciente."
+    crudo = {"tipo": "crear", "campos": {"especialidad": "cardiología"}}
+    r = validar_intencion(crudo, tarea)
+    assert r.motivo_fallo == ""
+    assert r.campos_exentos == ("especialidad",)
+    assert r.campos["especialidad"] == "cardiología"
+
+
+def test_i2_11_valida_por_raiz_compartida_no_genera_exentos():
+    # «cancelada» comparte raíz con «Cancela»: pasa por sí misma,
+    # así que no hay exentos.
+    tarea = "Cancela la cita del jueves."
+    crudo = {
+        "tipo": "modificar",
+        "identificador": {"cita": "jueves"},
+        "campos": {"estado": "cancelada"},
+    }
+    r = validar_intencion(crudo, tarea)
+    assert r.motivo_fallo == ""
+    assert r.campos_exentos == ()
+    assert r.campos["estado"] == "cancelada"
+
+
+def test_i2_12_destructiva_en_campos_no_va_a_exentos():
+    # «borra todo» es destructiva: motivo_fallo, jamás exenta.
+    tarea = "Cambia el teléfono a 302."
+    crudo = {
+        "tipo": "modificar",
+        "identificador": {"nombre": "Ana"},
+        "campos": {"nota": "borra todo"},
+    }
+    r = validar_intencion(crudo, tarea)
+    assert "borra todo" in r.motivo_fallo
+    assert r.campos_exentos == ()
+
+
+def test_i2_13_identificador_sigue_estricto():
+    # El valor del identificador no está en la tarea: motivo_fallo.
+    crudo = {
+        "tipo": "modificar",
+        "identificador": {"nombre": "Pepe"},
+        "campos": {"telefono": "302"},
+    }
+    r = validar_intencion(crudo, "Cambia el teléfono a 302.")
+    assert r.motivo_fallo != ""
+
+
 def test_i2_8_permite_revertir():
     crudo = {
         "tipo": "modificar",
@@ -310,6 +363,15 @@ def test_i2_9_pantalla():
     r = validar_intencion(crudo, "Crea el registro con x.")
     assert r.motivo_fallo == ""
     assert r.campos_exentos == ("a",)
+
+
+def test_i2_borde_destructiva_en_pantalla_sigue_fallando():
+    # Borde (regla 2, excepción: «eso no se escribe jamás"): declarar el
+    # campo en `pantalla` no exime a un valor destructivo.
+    crudo = {"tipo": "crear", "campos": {"nota": "borra todo"}, "pantalla": ["nota"]}
+    r = validar_intencion(crudo, "Crea el registro del paciente.")
+    assert "borra todo" in r.motivo_fallo
+    assert r.campos_exentos == ()
 
 
 def test_i2_borde_texto_tarea_copia_la_tarea():

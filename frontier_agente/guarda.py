@@ -3,10 +3,11 @@ import math
 import re
 from datetime import datetime
 
+from frontier_agente.intencion import PALABRAS_DESTRUCTIVAS
 from frontier_agente.texto import (
     es_texto_numerico,
     normalizar_valor,
-    raiz_compartida,
+    palabras_de,
     valores_iguales,
 )
 from frontier_agente.tipos_agente import (
@@ -38,6 +39,12 @@ MINIMO_SUBCADENA_TAREA = 2  # una subcadena de 1 carácter no prueba nada (G2.13
 # NOTA: fechas derivadas de la regla 6 (E4): formatos numéricos que parsea
 # strptime y fechas con mes en español; el día es 1-31 cuando viene.
 FORMATOS_FECHA_NUMERICAS = ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d")
+# NOTA: dd/mm y dd-mm (sin año) se validan por patrón y no con strptime:
+# strptime sin año trae un aviso de deprecación (ambiguo desde Python 3.15).
+PATRON_FECHA_SIN_ANIO = re.compile(r"^(0?[1-9]|[12]\d|3[01])[/-](0?[1-9]|1[0-2])$")
+# NOTA: el borrado total («borra todo») es la única orden que nunca pasa la
+# regla de texto, venga en una escritura o en una opción elegida (G2.23).
+PALABRAS_TODO = ("todo", "todos")
 PATRON_FECHA_CON_MES = re.compile(
     r"^(?:(?:[1-9]|[12]\d|3[01]) de )?"
     r"(enero|febrero|marzo|abril|mayo|junio|julio|agosto|"
@@ -173,17 +180,30 @@ def _regla_desplazar(accion: Accion) -> Veredicto:
 
 
 def _regla_texto_de_la_tarea(accion: Accion, intencion: Intencion) -> Veredicto:
-    # NOTA: el texto debe venir de la tarea tanto al escribir como al elegir
-    # una opción de lista; elegir además admite similitud por raíz compartida.
+    # NOTA: V2: un clic elegir_opcion pasa siempre (la opción la ofrece la
+    # lista de la app, no es texto libre); la escritura sigue con la regla 6
+    # completa; y una orden de borrarlo todo nunca pasa en ninguna de las dos.
     es_escritura = accion.tipo == "escribir"
     es_eleccion = accion.tipo == "clic" and accion.funcion == FUNCION_ELEGIR_OPCION
     if not (es_escritura or es_eleccion):
         return Veredicto(permitida=True)
+    if _pide_borrarlo_todo(accion.texto):
+        return Veredicto(permitida=False, motivo="el texto no está en la tarea")
+    if es_eleccion:
+        return Veredicto(permitida=True)
     if _texto_viene_de_la_tarea(accion.texto, intencion):
         return Veredicto(permitida=True)
-    if es_eleccion and raiz_compartida(accion.texto, intencion.texto_tarea):
-        return Veredicto(permitida=True)
     return Veredicto(permitida=False, motivo="el texto no está en la tarea")
+
+
+def _pide_borrarlo_todo(texto: str) -> bool:
+    # NOTA: G2.23 y g27: una palabra destructiva completa junto a «todo»/
+    # «todos» es la orden de borrarlo todo; la lista de palabras destructivas
+    # es la única, la del validador de intención.
+    palabras = palabras_de(texto)
+    es_destructiva = any(palabra in PALABRAS_DESTRUCTIVAS for palabra in palabras)
+    pide_todo = any(palabra in PALABRAS_TODO for palabra in palabras)
+    return es_destructiva and pide_todo
 
 
 def _texto_viene_de_la_tarea(texto: str, intencion: Intencion) -> bool:
@@ -195,7 +215,7 @@ def _texto_viene_de_la_tarea(texto: str, intencion: Intencion) -> bool:
         return True
     if _es_subcadena_de_la_tarea(texto, intencion.texto_tarea):
         return True
-    if es_fecha_derivable(texto, intencion.texto_tarea):
+    if es_fecha_derivable(texto):
         return True
     valores_exentos = [
         intencion.campos[llave]
@@ -217,26 +237,27 @@ def _es_subcadena_de_la_tarea(texto: str, texto_tarea: str) -> bool:
     return normalizado in normalizar_valor(texto_tarea)
 
 
-def es_fecha_derivable(texto: str, texto_tarea: str) -> bool:
-    # NOTA: regla 6 (E4): una tarea que nombra un mes y un año se escribe en el
-    # formulario como fecha concreta; el texto pasa si parsea como fecha de los
-    # formatos permitidos y su año de 4 dígitos aparece en la tarea.
-    anio = _anio_de_fecha(normalizar_valor(texto))
-    if not anio:
-        return False
-    return re.search(rf"(?<!\d){anio}(?!\d)", normalizar_valor(texto_tarea)) is not None
+def es_fecha_derivable(texto: str) -> bool:
+    # NOTA: regla 6 (E4, validación 2): una fecha parseable pasa SIEMPRE, sin
+    # exigir su año en la tarea: las tareas hablan de fechas relativas («hoy»,
+    # «el jueves», «en septiembre») y el agente las calcula desde el «Hoy» de
+    # la app; una fecha no es vector de inyección.
+    return _parsea_como_fecha(normalizar_valor(texto))
 
 
-def _anio_de_fecha(texto_normalizado: str) -> str:
-    # NOTA: el año de 4 dígitos de la fecha si el texto parsea (numérica por
-    # strptime, o con mes en español por patrón); "" si no parsea como fecha.
+def _parsea_como_fecha(texto_normalizado: str) -> bool:
+    # NOTA: con año por strptime (valida día y mes reales, estricto al texto
+    # completo); sin año o con mes en español, por patrón; nada alrededor pasa.
     for formato in FORMATOS_FECHA_NUMERICAS:
         try:
-            return f"{datetime.strptime(texto_normalizado, formato).year:04d}"
+            datetime.strptime(texto_normalizado, formato)
+            return True
         except ValueError:
             continue
-    coincidencia = PATRON_FECHA_CON_MES.match(texto_normalizado)
-    return coincidencia.group(2) if coincidencia else ""
+    return (
+        PATRON_FECHA_SIN_ANIO.match(texto_normalizado) is not None
+        or PATRON_FECHA_CON_MES.match(texto_normalizado) is not None
+    )
 
 
 def _regla_clic_repetido(accion: Accion, estado: EstadoLazo) -> Veredicto:

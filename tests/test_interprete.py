@@ -48,14 +48,16 @@ def test_IN2_json_envuelto_en_bloque_de_codigo_da_igual():
     )
 
 
-def test_IN3_valor_ajeno_a_la_tarea_no_lanza_y_nombra_el_valor():
+def test_IN3_valor_ajeno_a_la_tarea_queda_en_campos_exentos():
     respuesta = (
         '{"tipo":"crear","entidad":"cliente","identificador":{"nit":"901234567"},'
         '"campos":{"nombre":"Tienda Sol","nit":"901234567","ciudad":"Medellín"}}'
     )
     llamar = LlamarGuionado(respuesta)
     intencion = asyncio.run(interpretar(TAREA, llamar))
-    assert "Medellín" in intencion.motivo_fallo
+    # NOTA: regla nueva del bloque 5: un valor de campos fuera de la tarea pasa a exento, no a motivo_fallo.
+    assert intencion.motivo_fallo == ""
+    assert "ciudad" in intencion.campos_exentos
 
 
 def test_IN4_error_de_modelo_al_llamar_sale_tal_cual():

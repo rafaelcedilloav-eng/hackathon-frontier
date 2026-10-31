@@ -299,6 +299,9 @@ class TestBloque6TablaO2:
             parsear_accion('{"tipo":"desplazar","y":600,"direccion":"abajo","veces":3}')
         with pytest.raises(ErrorModelo):
             parsear_accion('{"tipo":"desplazar","x":500,"direccion":"abajo","veces":3}')
+        # NOTA: la fila O3.5 (desplegable recortado con "...") pertenece a la
+        # tabla O3 del bloque 8 (encargo 010): ese puesto la trae en
+        # TestBloque8TablaO3 y no se duplica aquí.
 
 
 # --------------------------------------------- Bloque 8 (tabla O3 del encargo 010)
@@ -346,6 +349,27 @@ class TestBloque8TablaO3:
             "Celular",
             "Confirmar",
         ):
+            assert trozo in sistema, f"falta {trozo!r} en el system"
+
+    def test_O3_6_el_system_pide_numeros_solo_con_digitos(self):
+        # O3.6: el system contiene la frase de los números de documento y
+        # teléfonos solo con dígitos, sin puntos, comas ni espacios, con el
+        # ejemplo 19.222.336 -> 19222336.
+        sistema = construir_mensajes("x", [])[0]["content"]
+        for trozo in (
+            "solo con dígitos",
+            "sin puntos, comas ni espacios",
+            "19.222.336",
+            "19222336",
+        ):
+            assert trozo in sistema, f"falta {trozo!r} en el system"
+
+    def test_O3_5_el_system_habla_del_desplegable_recortado(self):
+        # O3.5: el system contiene una frase sobre el desplegable que muestra
+        # el valor recortado con "...": si el inicio coincide con la opción
+        # que elegiste, ya está elegido: no lo vuelvas a abrir.
+        sistema = construir_mensajes("x", [])[0]["content"]
+        for trozo in ("...", "ya está elegido", "no lo vuelvas a abrir"):
             assert trozo in sistema, f"falta {trozo!r} en el system"
 
     def test_O3_4_parsear_clic_cerrar_aviso_con_texto(self):
