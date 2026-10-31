@@ -18,8 +18,9 @@ PALABRAS_DESTRUCTIVAS = (
 # restaurar; deshacer/restaurar/revertir NO son destructivos (regla 3 vieja).
 PALABRAS_REVERTIR = ("deshacer", "restaurar", "restaura", "revertir")
 # NOTA: prefijos de la misma regla: "deshac" cubre la familia des+hacer
-# (deshace, deshacer) y "repon" la que pide la spec (reponer/reposición).
-PREFIJOS_REVERTIR = ("deshac", "repon")
+# (deshace, deshacer), "repon" cubre reponer y "repos" cubre reposición
+# (que no empieza por "repon").
+PREFIJOS_REVERTIR = ("deshac", "repon", "repos")
 TIPO_OTRO = "otro"
 BLOQUES = ("identificador", "campos", "filtros")
 # NOTA: bloques del crudo que declaran llaves de campos que no se verifican
@@ -31,6 +32,8 @@ CLAVES_UNICAS = (
     "nit", "documento", "cedula", "id", "codigo",
     "rfc", "curp", "ruc", "dni", "rut", "identificacion",
 )
+# NOTA: numeración inicial de los elementos de una lista aplanada (I2.6).
+PRIMERA_POSICION = 1
 MENSAJE_DESTRUCTIVA = "la tarea pide una acción destructiva"
 MENSAJE_TIPO_NO_SOPORTADO = "tipo de tarea no soportado"
 MENSAJE_NO_ES_DICT = "la respuesta del modelo no es un objeto"
@@ -184,9 +187,9 @@ def _aplanar_dict(
 
 def _aplanar_lista(llave: str, contenido: list) -> tuple[dict[str, str], str]:
     # NOTA: elementos texto/número; la llave final es "<llave> <posición>"
-    # desde 1 (I2.6: "telefonos 1", "telefonos 2").
+    # desde PRIMERA_POSICION (I2.6: "telefonos 1", "telefonos 2").
     pares = {}
-    for posicion, elemento in enumerate(contenido, 1):
+    for posicion, elemento in enumerate(contenido, PRIMERA_POSICION):
         texto = _texto_o_none(elemento)
         if texto is None:
             return {}, f"el valor de {llave} no es texto ni número"

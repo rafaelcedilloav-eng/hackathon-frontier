@@ -324,17 +324,18 @@ def test_G2_3_escribir_con_inyeccion_adosada_bloqueada():
 
 
 def test_G2_4_escribir_valor_de_campo_exento():
-    # G2.4: escribir "agenda por EPS" siendo el valor de un campo cuya llave
-    # está en campos_exentos -> permitida. Uso el ejemplo del bloque 5 (I2.3):
-    # la tarea no trae «agenda por EPS» como subcadena, así que solo el exento
-    # puede salvarla.
+    # G2.4 (valor revisado por el director: el dato real de la clínica no va en
+    # pruebas): escribir "agenda por el plan" siendo el valor de un campo cuya
+    # llave está en campos_exentos -> permitida. La tarea no trae
+    # «agenda por el plan» como subcadena (dice «agéndala por el plan»),
+    # así que solo el exento puede salvarla.
     intencion = Intencion(
         tipo="crear",
-        campos={"servicio": "dermatología", "via": "agenda por EPS"},
+        campos={"servicio": "dermatología", "via": "agenda por el plan"},
         campos_exentos=("via",),
-        texto_tarea="Si la EPS cubre dermatología, agéndala por EPS.",
+        texto_tarea="Si el plan cubre dermatología, agéndala por el plan.",
     )
-    v = evaluar_accion(Accion(tipo="escribir", texto="agenda por EPS"), intencion, estado_crear())
+    v = evaluar_accion(Accion(tipo="escribir", texto="agenda por el plan"), intencion, estado_crear())
     assert v.permitida is True
 
 
@@ -415,8 +416,41 @@ def test_G2_11_registrar_desplazar_solo_cuenta_paso():
     assert estado.campos_escritos == set()
 
 
-def test_G2_12_exportar_permitida():
-    # Prosa 5 de la tabla G2 (sin fila propia): funcion exportar -> permitida;
-    # solo se usa en la fase exportar y no toca datos.
-    v = evaluar_accion(Accion(tipo="clic", funcion="exportar"), intencion_crear(), estado_crear())
-    assert v.permitida is True
+def test_G2_12_escribir_solo_espacios_bloqueada():
+    # G2.12: escribir "   " (solo espacios) con cualquier tarea -> bloqueada:
+    # un texto vacío tras normalizar nunca pasa (vaciaría el campo).
+    intencion = Intencion(
+        tipo="crear",
+        campos={"nombre": "Tienda Sol"},
+        texto_tarea="Registra a la tienda Tienda Sol.",
+    )
+    v = evaluar_accion(Accion(tipo="escribir", texto="   "), intencion, estado_crear())
+    assert v.permitida is False
+    assert "texto no está en la tarea" in v.motivo
+
+
+def test_G2_13_subcadena_de_un_caracter_no_cuenta():
+    # G2.13: escribir "a" con texto_tarea="cambia la letra a" -> bloqueada:
+    # una subcadena de menos de 2 caracteres y no numérica no cuenta.
+    intencion = Intencion(tipo="modificar", texto_tarea="cambia la letra a")
+    v = evaluar_accion(Accion(tipo="escribir", texto="a"), intencion, estado_crear())
+    assert v.permitida is False
+    assert "texto no está en la tarea" in v.motivo
+
+
+def test_G2_14_exportar_solo_en_fase_exportar():
+    # G2.14: clic exportar permitida en fase exportar; en fase crear ->
+    # bloqueada con el motivo exacto "no es fase de exportar".
+    v_exportar = evaluar_accion(
+        Accion(tipo="clic", funcion="exportar"),
+        intencion_crear(),
+        estado_crear(fase="exportar"),
+    )
+    assert v_exportar.permitida is True
+    v_creacion = evaluar_accion(
+        Accion(tipo="clic", funcion="exportar"),
+        intencion_crear(),
+        estado_crear(fase="crear"),
+    )
+    assert v_creacion.permitida is False
+    assert v_creacion.motivo == "no es fase de exportar"

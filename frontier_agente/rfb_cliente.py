@@ -18,6 +18,7 @@ from frontier_agente.errores import (
     ErrorProtocolo,
     ErrorTiempo,
 )
+from frontier_agente.guarda import VECES_DESPLAZAR_MAXIMAS, VECES_DESPLAZAR_MINIMAS
 
 logger = logging.getLogger(__name__)
 
@@ -68,12 +69,16 @@ MASCARA_BOTON_IZQUIERDO = 1
 MASCARA_RUEDA_ABAJO = 1 << 4  # botón 5 de X11: rueda hacia abajo
 MASCARA_RUEDA_ARRIBA = 1 << 3  # botón 4 de X11: rueda hacia arriba
 VECES_RUEDA_POR_OMISION = 3
-VECES_RUEDA_MINIMAS = 1
-VECES_RUEDA_MAXIMAS = 10
+# NOTA: el rango de veces (1 a 10) viene de guarda.py, su única fuente.
 
 # NOTA: variables de entorno que alimenta desde_entorno().
 VARIABLE_URL = "FRONTIER_ESCRITORIO_URL"
 VARIABLE_PASSWORD = "FRONTIER_ESCRITORIO_PASS"
+
+
+def _es_entero(valor: object) -> bool:
+    # NOTA: int de verdad (un bool no cuenta) para validar antes de empaquetar.
+    return isinstance(valor, int) and not isinstance(valor, bool)
 
 
 def _desempaquetar(formato: str, crudo: bytes) -> tuple:
@@ -359,14 +364,18 @@ class ClienteRFB:
         self._t_ultimo_evento = time.monotonic()
 
     async def desplazar(self, x: int, y: int, abajo: bool, veces: int = VECES_RUEDA_POR_OMISION) -> None:
-        # NOTA: valida TODO antes de mandar; por cada vez, rueda abajo-pausa-suelta en (x, y).
+        # NOTA: valida TODO antes de mandar; coordenadas y veces enteras y en
+        # rango (un flotante jamás llega al struct); por cada vez, rueda
+        # abajo-pausa-suelta en (x, y).
+        if not _es_entero(x) or not _es_entero(y):
+            raise ValueError(f"desplazar necesita coordenadas enteras: ({x}, {y})")
         if not 0 <= x < self._ancho or not 0 <= y < self._alto:
             raise ValueError(
                 f"desplazar fuera de la pantalla {self._ancho}x{self._alto}: ({x}, {y})")
-        if not VECES_RUEDA_MINIMAS <= veces <= VECES_RUEDA_MAXIMAS:
+        if not _es_entero(veces) or not VECES_DESPLAZAR_MINIMAS <= veces <= VECES_DESPLAZAR_MAXIMAS:
             raise ValueError(
-                f"las veces de desplazar deben estar entre "
-                f"{VECES_RUEDA_MINIMAS} y {VECES_RUEDA_MAXIMAS}: {veces}")
+                f"las veces de desplazar deben ser un entero entre "
+                f"{VECES_DESPLAZAR_MINIMAS} y {VECES_DESPLAZAR_MAXIMAS}: {veces}")
         self._exigir_conexion()
         mascara = MASCARA_RUEDA_ABAJO if abajo else MASCARA_RUEDA_ARRIBA
         for _ in range(veces):

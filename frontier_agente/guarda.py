@@ -1,7 +1,12 @@
 """El guarda vigila cada acción antes de ejecutarse y registra el resultado."""
 import math
 
-from frontier_agente.texto import normalizar_valor, raiz_compartida, valores_iguales
+from frontier_agente.texto import (
+    es_texto_numerico,
+    normalizar_valor,
+    raiz_compartida,
+    valores_iguales,
+)
 from frontier_agente.tipos_agente import (
     FUNCIONES_CONTROL,
     Accion,
@@ -20,6 +25,11 @@ MOTIVO_CLIC_REPETIDO = "ya se guardó una vez: clic repetido en el control de gu
 COORDENADAS_GUARDADAS = 2
 FASES_DE_GUARDAR = ("crear", "modificar")
 FUNCION_REVERTIR = "revertir"
+FUNCION_EXPORTAR = "exportar"
+FASE_EXPORTAR = "exportar"
+MOTIVO_EXPORTAR_FUERA = "no es fase de exportar"
+MINIMO_SUBCADENA_TAREA = 2  # una subcadena de 1 carácter no prueba nada (G2.13)
+# NOTA: única fuente de las constantes de desplazar; ojos.py y rfb_cliente.py las importan de aquí.
 TIPO_DESPLAZAR = "desplazar"
 DIRECCIONES_DESPLAZAR = ("arriba", "abajo")
 VECES_DESPLAZAR_MINIMAS = 1
@@ -45,6 +55,7 @@ def evaluar_accion(accion: Accion, intencion: Intencion, estado: EstadoLazo) -> 
         _regla_funcion(accion),
         _regla_eliminar(accion),
         _regla_revertir(accion, intencion),
+        _regla_exportar(accion, estado),
         _regla_desplazar(accion),
         _regla_texto_de_la_tarea(accion, intencion),
         _regla_clic_repetido(accion, estado),
@@ -81,13 +92,15 @@ def _regla_coordenadas(accion: Accion) -> Veredicto:
     es_escribir_posicionado = accion.tipo == "escribir" and accion.con_clic
     if not (es_clic or es_escribir_posicionado):
         return Veredicto(permitida=True)
-    en_rango = (
-        0 <= accion.x <= LIMITE_COORDENADA
-        and 0 <= accion.y <= LIMITE_COORDENADA
-    )
-    if not en_rango:
+    if not _coordenadas_en_rango(accion.x, accion.y):
         return Veredicto(permitida=False, motivo="las coordenadas del clic están fuera de la pantalla")
     return Veredicto(permitida=True)
+
+
+def _coordenadas_en_rango(x: int, y: int) -> bool:
+    # NOTA: única definición del rango 0-1000 (escala del modelo); la comparten
+    # el clic, el escribir con clic y el desplazar.
+    return 0 <= x <= LIMITE_COORDENADA and 0 <= y <= LIMITE_COORDENADA
 
 
 def _regla_funcion(accion: Accion) -> Veredicto:
@@ -112,16 +125,20 @@ def _regla_revertir(accion: Accion, intencion: Intencion) -> Veredicto:
     return Veredicto(permitida=True)
 
 
+def _regla_exportar(accion: Accion, estado: EstadoLazo) -> Veredicto:
+    # NOTA: regla del bloque 6: exportar no toca datos, pero solo tiene sentido
+    # en su fase; en cualquier otra se bloquea con el motivo claro.
+    if accion.funcion == FUNCION_EXPORTAR and estado.fase != FASE_EXPORTAR:
+        return Veredicto(permitida=False, motivo=MOTIVO_EXPORTAR_FUERA)
+    return Veredicto(permitida=True)
+
+
 def _regla_desplazar(accion: Accion) -> Veredicto:
     # NOTA: regla del bloque 6: desplazar pide coordenadas en pantalla,
     # dirección válida y un número razonable de muescas de rueda.
     if accion.tipo != TIPO_DESPLAZAR:
         return Veredicto(permitida=True)
-    en_rango = (
-        0 <= accion.x <= LIMITE_COORDENADA
-        and 0 <= accion.y <= LIMITE_COORDENADA
-    )
-    if not en_rango:
+    if not _coordenadas_en_rango(accion.x, accion.y):
         return Veredicto(permitida=False, motivo=MOTIVO_DESPLAZAR_COORDENADAS)
     if accion.direccion not in DIRECCIONES_DESPLAZAR:
         return Veredicto(permitida=False, motivo=MOTIVO_DESPLAZAR_DIRECCION)
@@ -151,15 +168,26 @@ def _texto_viene_de_la_tarea(texto: str, intencion: Intencion) -> bool:
     valores_de_la_tarea = list(intencion.campos.values()) + list(intencion.identificador.values())
     if any(valores_iguales(texto, valor) for valor in valores_de_la_tarea):
         return True
-    if texto and intencion.texto_tarea:
-        if normalizar_valor(texto) in normalizar_valor(intencion.texto_tarea):
-            return True
+    if _es_subcadena_de_la_tarea(texto, intencion.texto_tarea):
+        return True
     valores_exentos = [
         intencion.campos[llave]
         for llave in intencion.campos_exentos
         if llave in intencion.campos
     ]
     return any(valores_iguales(texto, valor) for valor in valores_exentos)
+
+
+def _es_subcadena_de_la_tarea(texto: str, texto_tarea: str) -> bool:
+    # NOTA: la subcadena del texto literal solo cuenta si lo escrito, ya
+    # normalizado, mide 2 o más caracteres o es numérico: vacío o una letra
+    # suelta nunca pasa (G2.12 y G2.13).
+    if not texto or not texto_tarea:
+        return False
+    normalizado = normalizar_valor(texto)
+    if len(normalizado) < MINIMO_SUBCADENA_TAREA and not es_texto_numerico(normalizado):
+        return False
+    return normalizado in normalizar_valor(texto_tarea)
 
 
 def _regla_clic_repetido(accion: Accion, estado: EstadoLazo) -> Veredicto:

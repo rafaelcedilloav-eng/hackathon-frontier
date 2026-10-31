@@ -1,6 +1,12 @@
 """Los ojos del agente: convierten una captura PNG en una Accion del intérprete."""
 from collections.abc import Awaitable, Callable
 
+from frontier_agente.guarda import (
+    DIRECCIONES_DESPLAZAR,
+    TIPO_DESPLAZAR,
+    VECES_DESPLAZAR_MAXIMAS,
+    VECES_DESPLAZAR_MINIMAS,
+)
 from frontier_agente.json_modelo import extraer_json
 from frontier_agente.tipos_agente import (
     ESCALA_MODELO,
@@ -23,10 +29,7 @@ MENSAJE_LECTURA_INVALIDA = "la acción leer necesita una lectura en objeto"
 MENSAJE_FUNCION_INVALIDA = "la funcion de la acción no es texto"
 MENSAJE_TEXTO_INVALIDO = "el texto de la acción no es texto"
 MENSAJE_POSICION_INCOMPLETA = "la acción escribir necesita x e y juntas"
-TIPO_DESPLAZAR = "desplazar"
-DIRECCIONES_DESPLAZAR = ("arriba", "abajo")
-VECES_DESPLAZAR_MINIMAS = 1
-VECES_DESPLAZAR_MAXIMAS = 10
+# NOTA: las constantes de desplazar vienen de guarda.py, su única fuente.
 VECES_DESPLAZAR_POR_OMISION = VECES_DESPLAZAR_MINIMAS
 MENSAJE_DIRECCION_INVALIDA = "la dirección de desplazar debe ser arriba o abajo"
 MENSAJE_VECES_INVALIDAS = "las veces de desplazar deben ser un entero de 1 a 10"

@@ -32,7 +32,8 @@ RAZON_BLOQUEOS = "demasiados intentos bloqueados"
 RAZON_SIN_PASOS = "se agotaron los pasos"
 RAZON_PANTALLA_INMOVIL = "la pantalla no cambia"
 
-# NOTA: traza de depuración opt-in: solo si AGENTE_TRAZA_DIR existe en el entorno.
+# NOTA: traza de depuración: la carpeta la fija AGENTE_TRAZA_DIR, que el agente
+# pone por defecto en producción (logs/traza_<marca>); en pruebas puede faltar.
 VARIABLE_TRAZA = "AGENTE_TRAZA_DIR"
 NOMBRE_TRAZA_JSONL = "traza.jsonl"
 PLANTILLA_NOMBRE_PNG = "{fase}_{paso:02d}.png"
@@ -67,11 +68,12 @@ def a_pixeles(x: int, y: int, ancho: int, alto: int) -> tuple[int, int]:
 
 
 class TrazaDeFase:
-    """Bitácora de depuración de una fase: un PNG por paso y una línea JSON por acción."""
+    """Registro de depuración de una fase: un PNG por paso y una línea JSON por acción."""
 
     def __init__(self, fase: str) -> None:
-        # NOTA: solo activa si AGENTE_TRAZA_DIR existe; aquí no llegan contraseña,
-        # token ni llave: la traza solo guarda capturas y campos de la acción.
+        # NOTA: activa si AGENTE_TRAZA_DIR existe (por defecto, siempre en
+        # producción); aquí no llegan contraseña, token ni llave: la traza
+        # solo guarda capturas y campos de la acción.
         self._fase = fase
         self._paso = 0
         self._carpeta = os.environ.get(VARIABLE_TRAZA) or ""
