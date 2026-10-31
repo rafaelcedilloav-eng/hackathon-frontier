@@ -120,7 +120,9 @@ def objetivo_responder(intencion: Intencion) -> str:
         "Tu conteo parcial vive en tu razon: termina cada razon con "
         '"CONTEO: <número acumulado> (páginas contadas: <lista>)" y confía en él al '
         "llegar a una página nueva: no re-cuentes una página que tu razon anterior ya "
-        "contó. Para pasar de página usa los controles de paginación de la lista "
+        "contó; si tu CONTEO acumulado ya incluye la página que ves y los filtros "
+        "siguen aplicados, no la re-cuentes: avanza. Para pasar de página usa los "
+        "controles de paginación de la lista "
         "(anterior/siguiente), nunca las filas: una fila abre su detalle y te saca de "
         "la lista. "
         "Si la pregunta pide un dato de un registro, abre ese registro y lee ese dato en él. "
