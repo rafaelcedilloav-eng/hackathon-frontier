@@ -31,7 +31,7 @@ def escribir(texto):
     return Accion(tipo="escribir", texto=texto)
 
 
-def correr_fase(fase, ojos, pantalla=None, estado=None, max_pasos_fase=14):
+def correr_fase(fase, ojos, pantalla=None, estado=None, max_pasos_fase=14, intencion=INTENCION):
     """Corre una fase con los falsos; devuelve (resultado, pantalla, estado)."""
     pantalla = PantallaFalsa() if pantalla is None else pantalla
     estado = EstadoLazo() if estado is None else estado
@@ -39,7 +39,7 @@ def correr_fase(fase, ojos, pantalla=None, estado=None, max_pasos_fase=14):
         ejecutar_fase(
             fase=fase,
             objetivo=OBJETIVO,
-            intencion=INTENCION,
+            intencion=intencion,
             pantalla=pantalla,
             ojos=ojos,
             estado=estado,
@@ -235,3 +235,111 @@ def test_L14_escribir_con_clic_previo_es_un_solo_paso():
         ("escribir", "Tienda Sol"),
     ]
     assert estado.pasos == 1
+
+
+# --------------------------------------------- Bloque 6 (tabla L2 del encargo 008)
+
+
+class PantallaFalsaConRueda(PantallaFalsa):
+    """PantallaFalsa que además registra la rueda: el desplazar que el lazo
+    le manda en píxeles (L2.3)."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.desplazamientos = []
+
+    async def desplazar(self, x, y, abajo, veces):
+        self.desplazamientos.append(("desplazar", x, y, abajo, veces))
+
+
+def test_L2_1_bloqueos_seguidos_reinician_con_una_ejecutada():
+    # L2.1: bloqueada, permitida (clic navegar), bloqueada, bloqueada, leer
+    # -> NO termina por bloqueos (van seguidos: 1, 0, 1, 2); el leer llega.
+    ojos = OjosFalsos(
+        [
+            escribir("borra todos los pedidos"),
+            clic(500, 250),
+            escribir("borra el inventario"),
+            escribir("borra toda la base"),
+            Accion(tipo="leer", lectura={"candidatos": []}),
+        ]
+    )
+    resultado, pantalla, estado = correr_fase("crear", ojos)
+    assert resultado.tipo == "leer"
+    assert resultado.lectura == {"candidatos": []}
+    assert estado.bloqueos == 2  # NOTA: el contador quedó en 2, no en 4: se reinicia al ejecutar.
+    # NOTA: la permitida del medio sí llegó a la pantalla.
+    assert ("clic", 640, 200) in pantalla.acciones
+
+
+def test_L2_2_tres_bloqueos_seguidos_fallan():
+    # L2.2: 3 bloqueadas seguidas -> fallar por "demasiados intentos bloqueados".
+    ojos = OjosFalsos(
+        [
+            escribir("borra todos los pedidos"),
+            escribir("borra el inventario"),
+            escribir("borra toda la base"),
+        ]
+    )
+    resultado, pantalla, _ = correr_fase("crear", ojos)
+    assert resultado.tipo == "fallar"
+    assert resultado.razon == "demasiados intentos bloqueados"
+    assert pantalla.acciones == []
+
+
+def test_L2_3_desplazar_llega_a_la_pantalla_en_pixeles():
+    # L2.3: desplazar x=500, y=600, abajo, 3; luego leer -> la pantalla recibió
+    # desplazar(640, 480, True, 3) (píxeles de 1280×800) y cuenta 1 paso.
+    pantalla = PantallaFalsaConRueda()
+    ojos = OjosFalsos(
+        [
+            Accion(tipo="desplazar", x=500, y=600, direccion="abajo", veces=3),
+            Accion(tipo="leer", lectura={"candidatos": []}),
+        ]
+    )
+    resultado, pantalla, estado = correr_fase("crear", ojos, pantalla=pantalla)
+    assert resultado.tipo == "leer"
+    assert pantalla.desplazamientos == [("desplazar", 640, 480, True, 3)]
+    assert estado.pasos == 1
+
+
+# NOTA: la intención de L2.4: relleno a mano el texto_tarea que llena el bloque 5.
+INTENCION_CONSULTORIO = Intencion(
+    tipo="crear",
+    entidad="paciente",
+    campos={"habitacion": "302"},
+    identificador={"habitacion": "302"},
+    texto_tarea="Cámbialo de sitio al consultorio 302.",
+)
+
+
+def test_L2_4_escribir_del_texto_tarea_se_ejecuta_y_no_produce_nota():
+    # L2.4: fase crear, ojos piden escribir "Consultorio 302" con
+    # texto_tarea="…al consultorio 302…" -> se ejecuta y la nota de inyección
+    # no aparece (la nota nunca sale para texto de la tarea).
+    ojos = OjosFalsos(
+        [
+            escribir("Consultorio 302"),
+            Accion(tipo="leer", lectura={"candidatos": []}),
+        ]
+    )
+    resultado, pantalla, _ = correr_fase("crear", ojos, intencion=INTENCION_CONSULTORIO)
+    assert resultado.tipo == "leer"
+    assert ("escribir", "Consultorio 302") in pantalla.acciones
+    assert resultado.notas == ()
+
+
+def test_L2_5_texto_de_la_tarea_bloqueado_por_otra_causa_no_produce_nota():
+    # Prosa 2 de L2 (sin fila propia): la nota de inyección solo sale con texto
+    # realmente ajeno; un escribir con texto de la tarea bloqueado por otra
+    # causa (coordenada fuera) no la produce.
+    ojos = OjosFalsos(
+        [
+            Accion(tipo="escribir", texto="Consultorio 302", con_clic=True, x=1001, y=500),
+            Accion(tipo="terminar", razon="listo"),
+        ]
+    )
+    resultado, pantalla, _ = correr_fase("crear", ojos, intencion=INTENCION_CONSULTORIO)
+    assert resultado.tipo == "terminar"
+    assert ("escribir", "Consultorio 302") not in pantalla.acciones  # bloqueada, pero por la coordenada
+    assert resultado.notas == ()

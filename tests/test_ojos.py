@@ -255,3 +255,47 @@ class TestOjos:
         asyncio.run(ojos.decidir(b"png", "objetivo", []))
         asyncio.run(ojos.decidir(b"png", "objetivo", []))
         assert abs(ojos.costo_total - 0.03) <= 1e-9
+
+
+class TestBloque6TablaO2:
+    """Tabla O2 (encargo 008): desplazar en parsear_accion y el system nuevo."""
+
+    def test_O2_1_desplazar_con_todo(self):
+        # O2.1: desplazar con x, y, direccion y veces -> la Accion exacta.
+        resultado = parsear_accion(
+            '{"tipo":"desplazar","x":500,"y":600,"direccion":"abajo","veces":3}'
+        )
+        assert resultado == Accion(tipo="desplazar", x=500, y=600, direccion="abajo", veces=3)
+
+    def test_O2_2_desplazar_veces_por_defecto_e_invalidos(self):
+        # O2.2: sin veces -> veces==1; veces=11 -> ErrorModelo; direccion="lados" -> ErrorModelo.
+        sin_veces = parsear_accion('{"tipo":"desplazar","x":500,"y":600,"direccion":"abajo"}')
+        assert sin_veces.veces == 1
+        with pytest.raises(ErrorModelo):
+            parsear_accion(
+                '{"tipo":"desplazar","x":500,"y":600,"direccion":"abajo","veces":11}'
+            )
+        with pytest.raises(ErrorModelo):
+            parsear_accion('{"tipo":"desplazar","x":500,"y":600,"direccion":"lados","veces":3}')
+
+    def test_O2_3_el_system_de_similitud_desplazar_y_revertir(self):
+        # O2.3: el system habla de elegir la opción más parecida, de desplazar
+        # la lista, de revertir solo si la tarea pide deshacer, y las listas de
+        # FUNCIONES_CONTROL ya traen revertir y exportar.
+        sistema = construir_mensajes("x", [])[0]["content"]
+        assert "más parecida" in sistema
+        assert "desplazar" in sistema
+        assert "revertir" in sistema
+        assert "exportar" in sistema
+        assert "revertir" in FUNCIONES_CONTROL
+
+    def test_O2_4_clic_normal_sin_veces_ni_direccion_sigue_igual(self):
+        # O2.4 (regresión): un clic sin veces/direccion parsea igual que siempre.
+        assert parsear_accion(ACCION_CLIC) == ACCION_CLIC_ESPERADA
+
+    def test_O2_5_desplazar_sin_x_o_sin_y_es_error_modelo(self):
+        # Borde (la prosa de O2 exige x e y numéricas): sin x, o sin y -> ErrorModelo.
+        with pytest.raises(ErrorModelo):
+            parsear_accion('{"tipo":"desplazar","y":600,"direccion":"abajo","veces":3}')
+        with pytest.raises(ErrorModelo):
+            parsear_accion('{"tipo":"desplazar","x":500,"direccion":"abajo","veces":3}')

@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 CLIC_MS = 150
 MILISEGUNDOS_POR_SEGUNDO = 1000
 PAUSA_TECLA_S = 0.02
+PAUSA_RUEDA_S = 0.06
 INTERVALO_QUIETA_S = 0.25
 TOPE_QUIETA_S = 3.0
 ESPERA_REPINTADO_S = 1.0
@@ -64,6 +65,11 @@ KEYSYM_CONTROL_IZQUIERDO = 0xFFE3
 KEYSYM_LETRA_A = 0x61
 MASCARA_SIN_BOTONES = 0
 MASCARA_BOTON_IZQUIERDO = 1
+MASCARA_RUEDA_ABAJO = 1 << 4  # botón 5 de X11: rueda hacia abajo
+MASCARA_RUEDA_ARRIBA = 1 << 3  # botón 4 de X11: rueda hacia arriba
+VECES_RUEDA_POR_OMISION = 3
+VECES_RUEDA_MINIMAS = 1
+VECES_RUEDA_MAXIMAS = 10
 
 # NOTA: variables de entorno que alimenta desde_entorno().
 VARIABLE_URL = "FRONTIER_ESCRITORIO_URL"
@@ -350,6 +356,23 @@ class ClienteRFB:
         await self._enviar(proto.msg_pointer(MASCARA_BOTON_IZQUIERDO, x, y))
         await asyncio.sleep(CLIC_MS / MILISEGUNDOS_POR_SEGUNDO)
         await self._enviar(proto.msg_pointer(MASCARA_SIN_BOTONES, x, y))
+        self._t_ultimo_evento = time.monotonic()
+
+    async def desplazar(self, x: int, y: int, abajo: bool, veces: int = VECES_RUEDA_POR_OMISION) -> None:
+        # NOTA: valida TODO antes de mandar; por cada vez, rueda abajo-pausa-suelta en (x, y).
+        if not 0 <= x < self._ancho or not 0 <= y < self._alto:
+            raise ValueError(
+                f"desplazar fuera de la pantalla {self._ancho}x{self._alto}: ({x}, {y})")
+        if not VECES_RUEDA_MINIMAS <= veces <= VECES_RUEDA_MAXIMAS:
+            raise ValueError(
+                f"las veces de desplazar deben estar entre "
+                f"{VECES_RUEDA_MINIMAS} y {VECES_RUEDA_MAXIMAS}: {veces}")
+        self._exigir_conexion()
+        mascara = MASCARA_RUEDA_ABAJO if abajo else MASCARA_RUEDA_ARRIBA
+        for _ in range(veces):
+            await self._enviar(proto.msg_pointer(mascara, x, y))
+            await asyncio.sleep(PAUSA_RUEDA_S)
+            await self._enviar(proto.msg_pointer(MASCARA_SIN_BOTONES, x, y))
         self._t_ultimo_evento = time.monotonic()
 
     async def escribir(self, texto: str) -> None:

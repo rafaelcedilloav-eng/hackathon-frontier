@@ -23,6 +23,13 @@ MENSAJE_LECTURA_INVALIDA = "la acción leer necesita una lectura en objeto"
 MENSAJE_FUNCION_INVALIDA = "la funcion de la acción no es texto"
 MENSAJE_TEXTO_INVALIDO = "el texto de la acción no es texto"
 MENSAJE_POSICION_INCOMPLETA = "la acción escribir necesita x e y juntas"
+TIPO_DESPLAZAR = "desplazar"
+DIRECCIONES_DESPLAZAR = ("arriba", "abajo")
+VECES_DESPLAZAR_MINIMAS = 1
+VECES_DESPLAZAR_MAXIMAS = 10
+VECES_DESPLAZAR_POR_OMISION = VECES_DESPLAZAR_MINIMAS
+MENSAJE_DIRECCION_INVALIDA = "la dirección de desplazar debe ser arriba o abajo"
+MENSAJE_VECES_INVALIDAS = "las veces de desplazar deben ser un entero de 1 a 10"
 
 MENSAJE_SISTEMA = (
     "Eres los ojos de un agente que ve una captura de pantalla de 1280×800 píxeles de un escritorio remoto.\n"
@@ -36,9 +43,15 @@ MENSAJE_SISTEMA = (
     "úsalo siempre que no estés seguro de que el campo tenga el foco.\n"
     "Formato de respuesta: solo un JSON, sin texto adicional, con las claves "
     "tipo, funcion, x, y, texto, tecla, razon y lectura.\n"
-    "tipo es uno de: clic, escribir, tecla, leer, terminar, fallar.\n"
+    "tipo es uno de: " + ", ".join(TIPOS_ACCION) + ".\n"
     "funcion es una de: " + ", ".join(FUNCIONES_CONTROL) + ".\n"
-    "En un clic con funcion elegir_opcion, manda también la clave texto con el valor elegido."
+    "En un clic con funcion elegir_opcion, manda también la clave texto con el valor elegido; "
+    "no hace falta el texto exacto: elige la opción más parecida por palabras "
+    "(por ejemplo, buscar «consulta general» y elegir «Consulta medicina general»).\n"
+    "Si la opción no se ve en la lista, usa la acción desplazar sobre la lista para hacerla rodar; "
+    "desplazar lleva direccion (arriba o abajo) y veces (de 1 a 10).\n"
+    "Si no hay un filtro para un dato, prueba el campo de búsqueda general o recorre la tabla con sus controles.\n"
+    "Un control que deshace o restaura (funcion revertir) es legítimo solo cuando la tarea pide deshacer o restaurar."
 )
 
 # NOTA: tipo de `llamar` de Ojos: recibe mensajes y PNG, devuelve RespuestaModelo.
@@ -122,6 +135,40 @@ def _lectura_normalizada(objeto_json: dict) -> dict:
     return {clave: _valor_de_lectura(valor) for clave, valor in lectura.items()}
 
 
+def _direccion_de_desplazar(objeto_json: dict) -> str:
+    # NOTA: desplazar exige direccion válida; anything else es ErrorModelo.
+    direccion = objeto_json.get("direccion")
+    if direccion not in DIRECCIONES_DESPLAZAR:
+        raise ErrorModelo(MENSAJE_DIRECCION_INVALIDA)
+    return str(direccion)
+
+
+def _veces_de_desplazar(objeto_json: dict) -> int:
+    # NOTA: veces ausente vale 1; entero de 1 a 10 (bool y no enteros no pasan).
+    valor = objeto_json.get("veces")
+    if valor is None:
+        return VECES_DESPLAZAR_POR_OMISION
+    es_entero = (
+        not isinstance(valor, bool)
+        and isinstance(valor, (int, float))
+        and float(valor).is_integer()
+    )
+    if not es_entero or not VECES_DESPLAZAR_MINIMAS <= valor <= VECES_DESPLAZAR_MAXIMAS:
+        raise ErrorModelo(MENSAJE_VECES_INVALIDAS)
+    return int(valor)
+
+
+def _accion_de_desplazar(objeto_json: dict) -> Accion:
+    # NOTA: desplazar con x e y obligatorias y validadas; sin funcion (no es un control).
+    return Accion(
+        tipo=TIPO_DESPLAZAR,
+        x=_coordenada(objeto_json.get("x"), "x"),
+        y=_coordenada(objeto_json.get("y"), "y"),
+        direccion=_direccion_de_desplazar(objeto_json),
+        veces=_veces_de_desplazar(objeto_json),
+    )
+
+
 def _posicion_de_accion(objeto_json: dict, tipo: str) -> tuple[int, int, bool]:
     # NOTA: clic exige x e y; escribir las acepta opcionales (ambas o ninguna,
     # con_clic=True solo con posición, fila O25); los demás tipos no llevan.
@@ -145,6 +192,8 @@ def parsear_accion(texto: str) -> Accion:
     tipo = objeto_json.get("tipo")
     if tipo not in TIPOS_ACCION:
         raise ErrorModelo(MENSAJE_TIPO_INVALIDO)
+    if tipo == TIPO_DESPLAZAR:
+        return _accion_de_desplazar(objeto_json)
     posicion_x, posicion_y, con_clic = _posicion_de_accion(objeto_json, tipo)
     return Accion(
         tipo=tipo,

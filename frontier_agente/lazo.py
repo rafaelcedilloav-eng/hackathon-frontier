@@ -22,6 +22,7 @@ MAX_BLOQUEOS = 3
 MAX_ACCIONES_SIN_EFECTO = 3
 MOTIVO_TEXTO_AJENO = "el texto no está en la tarea"
 TIPOS_FINALES = ("leer", "terminar", "fallar")
+DIRECCION_ABAJO = "abajo"
 POSICION_PNG = 0  # NOTA: en la tupla (png, ejecuto) del paso anterior.
 POSICION_EJECUTO = 1
 NOTA_PANTALLA_CAMBIANDO = "la pantalla seguía cambiando"
@@ -37,6 +38,8 @@ NOMBRE_TRAZA_JSONL = "traza.jsonl"
 PLANTILLA_NOMBRE_PNG = "{fase}_{paso:02d}.png"
 CLAVE_LECTURA = "lectura"
 CLAVE_TEXTO = "texto"
+CLAVE_DIRECCION = "direccion"
+CLAVE_VECES = "veces"
 
 
 class Pantalla(Protocol):
@@ -48,6 +51,7 @@ class Pantalla(Protocol):
     async def clic(self, x: int, y: int) -> None: ...  # NOTA: clic en píxeles de la pantalla.
     async def escribir(self, texto: str) -> None: ...  # NOTA: escribe un texto en el control enfocado.
     async def tecla(self, nombre: str) -> None: ...  # NOTA: pulsa una tecla por su nombre.
+    async def desplazar(self, x: int, y: int, abajo: bool, veces: int) -> None: ...  # NOTA: rueda del ratón sobre la lista en (x, y).
 
 
 class Ojos(Protocol):
@@ -113,6 +117,9 @@ class TrazaDeFase:
             linea[CLAVE_TEXTO] = accion.texto
         if accion.tipo == "leer":
             linea[CLAVE_LECTURA] = accion.lectura
+        if accion.tipo == "desplazar":
+            linea[CLAVE_DIRECCION] = accion.direccion
+            linea[CLAVE_VECES] = accion.veces
         self._agregar_linea(linea)
 
     def _escribir_bytes(self, nombre: str, contenido: bytes) -> None:
@@ -174,6 +181,7 @@ async def ejecutar_fase(fase: str, objetivo: str, intencion: Intencion,
             continue
         await _actuar(accion, pantalla)
         registrar_accion(accion, intencion, estado)
+        estado.bloqueos = 0  # NOTA: el tope cuenta bloqueos SEGUIDOS: una acción ejecutada reinicia (L2.1).
         historial.append(_linea_de_lo_hecho(accion, pantalla))
         pasos_en_fase += 1
         anterior = (png, True)
@@ -209,6 +217,9 @@ async def _actuar(accion: Accion, pantalla: Pantalla) -> None:
         if accion.con_clic:
             await pantalla.clic(*a_pixeles(accion.x, accion.y, pantalla.ancho, pantalla.alto))
         await pantalla.escribir(accion.texto)
+    elif accion.tipo == "desplazar":
+        pixel_x, pixel_y = a_pixeles(accion.x, accion.y, pantalla.ancho, pantalla.alto)
+        await pantalla.desplazar(pixel_x, pixel_y, abajo=accion.direccion == DIRECCION_ABAJO, veces=accion.veces)
     else:
         await pantalla.tecla(accion.tecla)
 
@@ -239,6 +250,8 @@ def _linea_de_lo_hecho(accion: Accion, pantalla: Pantalla) -> str:
             pixel_x, pixel_y = a_pixeles(accion.x, accion.y, pantalla.ancho, pantalla.alto)
             return f"clic en ({pixel_x}, {pixel_y}) y escribí «{accion.texto}»"
         return f"escribí «{accion.texto}»"
+    if accion.tipo == "desplazar":
+        return f"desplacé la lista {accion.veces} veces hacia {accion.direccion}"
     return f"tecla {accion.tecla}"
 
 

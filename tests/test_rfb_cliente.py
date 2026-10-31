@@ -887,3 +887,67 @@ def test_C36_captura_pantalla_completa_rapida():
         finally:
             await servidor.cerrar()
     asyncio.run(cuerpo())
+
+
+# ------------------------------------------------ Bloque 6 (tabla R2C del encargo 008)
+
+def test_R2C_1_desplazar_abajo_dos_veces():
+    """R2C.1: desplazar(640, 400, True, 2) en pantalla 1280×800 -> por cada
+    vez dos PointerEvent (máscara 0x10 y luego máscara 0, ambos en (640, 400));
+    4 eventos en total; entre bajar y soltar pasa la pausa de rueda (0.06 s)."""
+    async def cuerpo():
+        pantalla = _pantalla_llena(1280, 800, 0x40)
+        servidor = await crear_servidor(ConfiguracionServidor(pantallas=[pantalla]))
+        try:
+            async with ClienteRFB(servidor.url, "password") as c:
+                await c.desplazar(640, 400, True, 2)
+            ok = await _esperar_condicion(
+                lambda: len(servidor.registros_de("PointerEvent")) >= 4)
+            assert ok, "no llegaron los 4 PointerEvent"
+            eventos = servidor.registros_de("PointerEvent")
+            assert len(eventos) == 4
+            assert _pointer_events(servidor) == [
+                (0x10, 640, 400), (0, 640, 400),
+                (0x10, 640, 400), (0, 640, 400),
+            ]
+            for vez in range(2):
+                pausa = eventos[2 * vez + 1].timestamp - eventos[2 * vez].timestamp
+                assert 0.03 <= pausa <= 1.0, f"pausa de rueda inesperada en la vez {vez}"
+        finally:
+            await servidor.cerrar()
+    asyncio.run(cuerpo())
+
+
+def test_R2C_2_desplazar_arriba_una_vez():
+    """R2C.2: desplazar(640, 400, False, 1) -> máscara 0x08 y luego máscara 0."""
+    async def cuerpo():
+        pantalla = _pantalla_llena(1280, 800, 0x40)
+        servidor = await crear_servidor(ConfiguracionServidor(pantallas=[pantalla]))
+        try:
+            async with ClienteRFB(servidor.url, "password") as c:
+                await c.desplazar(640, 400, False, 1)
+            ok = await _esperar_condicion(
+                lambda: len(servidor.registros_de("PointerEvent")) >= 2)
+            assert ok, "no llegaron los 2 PointerEvent"
+            assert _pointer_events(servidor) == [(0x08, 640, 400), (0, 640, 400)]
+        finally:
+            await servidor.cerrar()
+    asyncio.run(cuerpo())
+
+
+def test_R2C_3_desplazar_invalido_no_manda_nada():
+    """R2C.3: desplazar(-1, 5, True) y desplazar(5, 5, True, 0) -> ValueError
+    y el servidor no recibió ningún PointerEvent."""
+    async def cuerpo():
+        servidor = await crear_servidor()
+        try:
+            async with ClienteRFB(servidor.url, "password") as c:
+                with pytest.raises(ValueError):
+                    await c.desplazar(-1, 5, True)
+                with pytest.raises(ValueError):
+                    await c.desplazar(5, 5, True, 0)
+                await asyncio.sleep(0.2)
+            assert servidor.registros_de("PointerEvent") == []
+        finally:
+            await servidor.cerrar()
+    asyncio.run(cuerpo())

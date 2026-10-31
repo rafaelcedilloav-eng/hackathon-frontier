@@ -2,6 +2,8 @@
 import asyncio
 import contextlib
 import logging
+import os
+import time
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 from typing import TypeAlias
@@ -9,7 +11,7 @@ from typing import TypeAlias
 from frontier_agente.errores import ErrorVNC
 from frontier_agente.interprete import interpretar
 from frontier_agente.juez import comparar_campos
-from frontier_agente.lazo import Pantalla, ejecutar_fase
+from frontier_agente.lazo import Pantalla, VARIABLE_TRAZA, ejecutar_fase
 from frontier_agente.modelo import llamar_modelo
 from frontier_agente.objetivos import objetivo_escribir, objetivo_resolver, objetivo_verificar, pares_de_texto
 from frontier_agente.ojos import Ojos
@@ -52,6 +54,11 @@ PLANTILLA_DIFERENCIA = "{campo}: esperado {esperado}, leído {leido}"
 SEPARADOR_DIFERENCIAS = "; "
 COSTO_DESCONOCIDO = 0.0
 
+# NOTA: traza siempre encendida en producción: carpeta por defecto si nadie la fija.
+CARPETA_TRAZA_POR_DEFECTO = "logs"
+PLANTILLA_TRAZA_POR_DEFECTO = "traza_{marca}"
+FORMATO_MARCA_TRAZA = "%Y%m%d_%H%M%S"
+
 # NOTA: firmas de las piezas que se inyectan (las pruebas falsifican ambas).
 AbrirPantalla: TypeAlias = Callable[[Escritorio], AbstractAsyncContextManager[Pantalla]]
 LlamarModelo: TypeAlias = Callable[..., Awaitable[RespuestaModelo]]
@@ -70,6 +77,7 @@ async def ejecutar_tarea(
     abrir = abrir_pantalla or _abrir_cliente_rfb
     llamador = llamar or llamar_modelo
     try:
+        _fijar_traza_por_defecto()
         estado, resumen, costo = await _correr(tarea, escritorio, abrir, llamador)
     except asyncio.CancelledError:
         raise
@@ -82,6 +90,21 @@ async def ejecutar_tarea(
     resumen_limpio = depurar_resumen(resumen, [escritorio.password])
     logger.info("la tarea terminó %s (costo de los ojos: %.4f)", estado, costo)
     return estado, resumen_limpio
+
+
+def _fijar_traza_por_defecto() -> None:
+    # NOTA: en producción la traza va siempre: si AGENTE_TRAZA_DIR no está en el
+    # entorno, se fija en logs/traza_<AAAAMMDD_HHMMSS> relativo a donde corre el
+    # proceso; si algo falla, solo se avisa (nunca rompe la tarea).
+    if os.environ.get(VARIABLE_TRAZA):
+        return
+    try:
+        marca = time.strftime(FORMATO_MARCA_TRAZA)
+        os.environ[VARIABLE_TRAZA] = os.path.join(
+            CARPETA_TRAZA_POR_DEFECTO, PLANTILLA_TRAZA_POR_DEFECTO.format(marca=marca)
+        )
+    except Exception as excepcion:
+        logger.warning("no se pudo fijar la carpeta de traza (%s)", type(excepcion).__name__)
 
 
 def _abrir_cliente_rfb(escritorio: Escritorio) -> AbstractAsyncContextManager[Pantalla]:

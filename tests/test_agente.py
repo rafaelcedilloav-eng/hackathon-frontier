@@ -317,3 +317,60 @@ def test_A18_higiene_de_los_archivos_nuevos_del_paquete():
         texto = (paquete / nombre).read_text(encoding="utf-8")
         for prohibido in ("SIGECOM", "__check", "__reset", "print(", "Maestros", "Comercial"):
             assert prohibido not in texto, f"{nombre} contiene {prohibido!r}"
+
+
+# --------------------------------------------- Bloque 6 (tabla A2 del encargo 008)
+
+def _escenario_crear():
+    """El escenario de A1 (crear de punta a punta) con falsos recién hechos."""
+    pantalla = PantallaFalsa()
+    llamar = LlamarGuionado(JSON_CREAR, [LEER_SIN_CANDIDATOS, *ESCRIBIR_FORMULARIO, LEER_VERIFICAR])
+    return pantalla, llamar, AbrirPantallaFalsa(pantalla)
+
+
+def test_A2_1_traza_por_defecto_cuando_falta_la_variable(monkeypatch, tmp_path):
+    # A2.1: con AGENTE_TRAZA_DIR borrado del entorno, ejecutar_tarea la fija en
+    # logs/traza_<algo> (relativo a donde corre el proceso) y queda traza.jsonl
+    # con al menos una línea; el resumen no cambia frente al de la variable puesta.
+    import os
+
+    # Control: con la variable puesta (comportamiento de hoy) para comparar resúmenes.
+    monkeypatch.setenv("AGENTE_TRAZA_DIR", str(tmp_path / "traza-control"))
+    _, llamar_control, abrir_control = _escenario_crear()
+    estado_control, resumen_control = correr_tarea(TAREA_CREAR, llamar_control, abrir_control)
+
+    # Sin la variable y con el proceso corrido desde tmp_path: la traza por defecto
+    # cae en logs/traza_<AAAAMMDD_HHMMSS> relativo a tmp_path.
+    monkeypatch.delenv("AGENTE_TRAZA_DIR", raising=False)
+    monkeypatch.chdir(tmp_path)
+    _, llamar, abrir = _escenario_crear()
+    estado, resumen = correr_tarea(TAREA_CREAR, llamar, abrir)
+
+    assert (estado, resumen) == (estado_control, resumen_control)
+    assert estado == "terminada"
+    carpetas = list((tmp_path / "logs").glob("traza_*"))
+    assert carpetas, "no se creó logs/traza_* relativo a donde corre el proceso"
+    lineas = []
+    for carpeta in carpetas:
+        traza = carpeta / "traza.jsonl"
+        assert traza.is_file(), f"falta traza.jsonl en {carpeta}"
+        lineas.extend(
+            linea for linea in traza.read_text(encoding="utf-8").splitlines() if linea.strip()
+        )
+    assert lineas, "traza.jsonl quedó vacío"
+    # NOTA: ejecutar_tarea pudo fijar la variable en el entorno del proceso;
+    # la quito para no ensuciar a otras pruebas de la sesión.
+    os.environ.pop("AGENTE_TRAZA_DIR", None)
+
+
+def test_A2_2_con_la_variable_la_traza_va_ahi(monkeypatch, tmp_path):
+    # A2.2: con AGENTE_TRAZA_DIR puesta, la traza va a esa carpeta (como hoy).
+    carpeta = tmp_path / "traza-puesta"
+    monkeypatch.setenv("AGENTE_TRAZA_DIR", str(carpeta))
+    _, llamar, abrir = _escenario_crear()
+    estado, resumen = correr_tarea(TAREA_CREAR, llamar, abrir)
+    assert estado == "terminada"
+    traza = carpeta / "traza.jsonl"
+    assert traza.is_file(), "la traza no fue a la carpeta de la variable"
+    lineas = [linea for linea in traza.read_text(encoding="utf-8").splitlines() if linea.strip()]
+    assert lineas

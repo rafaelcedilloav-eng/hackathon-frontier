@@ -1,7 +1,7 @@
 """El guarda vigila cada acción antes de ejecutarse y registra el resultado."""
 import math
 
-from frontier_agente.texto import valores_iguales
+from frontier_agente.texto import normalizar_valor, raiz_compartida, valores_iguales
 from frontier_agente.tipos_agente import (
     FUNCIONES_CONTROL,
     Accion,
@@ -19,6 +19,15 @@ DISTANCIA_SEGUNDO_GUARDADO = 30
 MOTIVO_CLIC_REPETIDO = "ya se guardó una vez: clic repetido en el control de guardar"
 COORDENADAS_GUARDADAS = 2
 FASES_DE_GUARDAR = ("crear", "modificar")
+FUNCION_REVERTIR = "revertir"
+TIPO_DESPLAZAR = "desplazar"
+DIRECCIONES_DESPLAZAR = ("arriba", "abajo")
+VECES_DESPLAZAR_MINIMAS = 1
+VECES_DESPLAZAR_MAXIMAS = 10
+MOTIVO_REVERTIR = "la tarea no pide deshacer"
+MOTIVO_DESPLAZAR_COORDENADAS = "las coordenadas de desplazar están fuera de la pantalla"
+MOTIVO_DESPLAZAR_DIRECCION = "la dirección de desplazar debe ser arriba o abajo"
+MOTIVO_DESPLAZAR_VECES = "las veces de desplazar deben estar entre 1 y 10"
 TECLAS_SIEMPRE = ("Tab", "Esc")
 TECLAS_ENTER = "Enter"
 FUNCION_GUARDAR = "guardar"
@@ -35,6 +44,8 @@ def evaluar_accion(accion: Accion, intencion: Intencion, estado: EstadoLazo) -> 
         _regla_coordenadas(accion),
         _regla_funcion(accion),
         _regla_eliminar(accion),
+        _regla_revertir(accion, intencion),
+        _regla_desplazar(accion),
         _regla_texto_de_la_tarea(accion, intencion),
         _regla_clic_repetido(accion, estado),
         _regla_guardar(accion, intencion, estado),
@@ -93,17 +104,62 @@ def _regla_eliminar(accion: Accion) -> Veredicto:
     return Veredicto(permitida=True)
 
 
+def _regla_revertir(accion: Accion, intencion: Intencion) -> Veredicto:
+    # NOTA: regla del bloque 6: revertir solo es legítimo si la tarea pide
+    # deshacer o restaurar (lo decide el validador de intención).
+    if accion.funcion == FUNCION_REVERTIR and not intencion.permite_revertir:
+        return Veredicto(permitida=False, motivo=MOTIVO_REVERTIR)
+    return Veredicto(permitida=True)
+
+
+def _regla_desplazar(accion: Accion) -> Veredicto:
+    # NOTA: regla del bloque 6: desplazar pide coordenadas en pantalla,
+    # dirección válida y un número razonable de muescas de rueda.
+    if accion.tipo != TIPO_DESPLAZAR:
+        return Veredicto(permitida=True)
+    en_rango = (
+        0 <= accion.x <= LIMITE_COORDENADA
+        and 0 <= accion.y <= LIMITE_COORDENADA
+    )
+    if not en_rango:
+        return Veredicto(permitida=False, motivo=MOTIVO_DESPLAZAR_COORDENADAS)
+    if accion.direccion not in DIRECCIONES_DESPLAZAR:
+        return Veredicto(permitida=False, motivo=MOTIVO_DESPLAZAR_DIRECCION)
+    if not VECES_DESPLAZAR_MINIMAS <= accion.veces <= VECES_DESPLAZAR_MAXIMAS:
+        return Veredicto(permitida=False, motivo=MOTIVO_DESPLAZAR_VECES)
+    return Veredicto(permitida=True)
+
+
 def _regla_texto_de_la_tarea(accion: Accion, intencion: Intencion) -> Veredicto:
-    # NOTA: el texto debe ser un valor de la tarea (campos o identificador) tanto
-    # al escribir como al elegir una opción de lista desplegable con un clic.
+    # NOTA: el texto debe venir de la tarea tanto al escribir como al elegir
+    # una opción de lista; elegir además admite similitud por raíz compartida.
     es_escritura = accion.tipo == "escribir"
     es_eleccion = accion.tipo == "clic" and accion.funcion == FUNCION_ELEGIR_OPCION
     if not (es_escritura or es_eleccion):
         return Veredicto(permitida=True)
-    valores_de_la_tarea = list(intencion.campos.values()) + list(intencion.identificador.values())
-    if any(valores_iguales(accion.texto, valor) for valor in valores_de_la_tarea):
+    if _texto_viene_de_la_tarea(accion.texto, intencion):
+        return Veredicto(permitida=True)
+    if es_eleccion and raiz_compartida(accion.texto, intencion.texto_tarea):
         return Veredicto(permitida=True)
     return Veredicto(permitida=False, motivo="el texto no está en la tarea")
+
+
+def _texto_viene_de_la_tarea(texto: str, intencion: Intencion) -> bool:
+    # NOTA: regla 6 del bloque 6: el texto pasa si es un valor plano de la tarea
+    # (campos o identificador, subvalores incluidos), si es subcadena del texto
+    # literal de la tarea o si es el valor de un campo exento por el validador.
+    valores_de_la_tarea = list(intencion.campos.values()) + list(intencion.identificador.values())
+    if any(valores_iguales(texto, valor) for valor in valores_de_la_tarea):
+        return True
+    if texto and intencion.texto_tarea:
+        if normalizar_valor(texto) in normalizar_valor(intencion.texto_tarea):
+            return True
+    valores_exentos = [
+        intencion.campos[llave]
+        for llave in intencion.campos_exentos
+        if llave in intencion.campos
+    ]
+    return any(valores_iguales(texto, valor) for valor in valores_exentos)
 
 
 def _regla_clic_repetido(accion: Accion, estado: EstadoLazo) -> Veredicto:
