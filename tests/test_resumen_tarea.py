@@ -101,3 +101,46 @@ def test_r10_sin_espacios_colgantes():
     _, resumen_terminada = armar_resumen(terminada, Intencion(tipo="crear"))
     assert resumen_terminada == resumen_terminada.rstrip()
     assert all(l.strip() != "" for l in lineas(resumen_terminada))
+
+
+# --- Bloque 5 (encargo 007) · tabla R2: nota por campo exento ---
+
+NOTA_EXENTA_VIA = "decidido en pantalla, no verificado contra la tarea: via"
+
+
+def test_r2_1_terminada_con_campo_exento():
+    resultado = ResultadoTarea(estado="terminada")
+    intencion = Intencion(tipo="crear", campos_exentos=("via",))
+    _, resumen = armar_resumen(resultado, intencion)
+    assert "Nota: " + NOTA_EXENTA_VIA in lineas(resumen)
+
+
+def test_r2_2_fallida_no_lleva_la_nota_exenta():
+    resultado = ResultadoTarea(estado="fallida", motivo="x")
+    intencion = Intencion(tipo="crear", campos_exentos=("via",))
+    _, resumen = armar_resumen(resultado, intencion)
+    assert NOTA_EXENTA_VIA not in resumen
+    assert not any(l.startswith("Nota: decidido en pantalla") for l in lineas(resumen))
+
+
+def test_r2_3_terminada_sin_intencion_no_lleva_la_nota():
+    resultado = ResultadoTarea(estado="terminada")
+    _, resumen = armar_resumen(resultado, None)
+    assert "decidido en pantalla" not in resumen
+
+
+def test_r2_borde_una_nota_por_campo_exento():
+    # Borde (prosa: se añade una nota por campo exento).
+    resultado = ResultadoTarea(estado="terminada")
+    intencion = Intencion(tipo="crear", campos_exentos=("via", "razon_social"))
+    _, resumen = armar_resumen(resultado, intencion)
+    ls = lineas(resumen)
+    assert "Nota: decidido en pantalla, no verificado contra la tarea: via" in ls
+    assert "Nota: decidido en pantalla, no verificado contra la tarea: razon_social" in ls
+
+
+def test_r2_borde_terminada_sin_exentos_no_lleva_la_nota():
+    # Borde (prosa: la nota solo existe si campos_exentos no está vacío).
+    resultado = ResultadoTarea(estado="terminada")
+    _, resumen = armar_resumen(resultado, Intencion(tipo="crear"))
+    assert "decidido en pantalla" not in resumen

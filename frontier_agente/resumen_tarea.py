@@ -10,6 +10,8 @@ LINEA_GENERICA = "Tarea terminada"
 PREFIJO_RESPUESTA = "respuesta: "
 PREFIJO_VERIFICADO = "Verificado releyendo: "
 PREFIJO_NOTA = "Nota: "
+# NOTA: texto fijo de la nota por campo exento (tabla R2, bloque 5).
+NOTA_EXENTO = "decidido en pantalla, no verificado contra la tarea: "
 PREFIJO_CANDIDATO = "- "
 LINEA_CANDIDATOS = "Candidatos:"
 SANGRIA_CAMPOS = "  "
@@ -47,7 +49,20 @@ def _lineas_terminada(resultado: ResultadoTarea, intencion: Intencion | None) ->
         lineas.append(PREFIJO_RESPUESTA + SEPARADOR_RESPUESTA.join(valores_respuesta))
     lineas.append(_linea_lo_hecho(intencion))
     lineas.extend(_lineas_verificados(resultado.campos_verificados))
+    lineas.extend(_lineas_exentos(intencion))
     return lineas
+
+
+def _lineas_exentos(intencion: Intencion | None) -> list[str]:
+    # NOTA: regla R2 del bloque 5: una nota por campo exento, solo cuando hay
+    # intención con exentos; solo _lineas_terminada la llama, así que en las
+    # fallidas la nota nunca aparece (R2.2).
+    if intencion is None:
+        return []
+    return [
+        PREFIJO_NOTA + NOTA_EXENTO + _a_texto(llave)
+        for llave in intencion.campos_exentos
+    ]
 
 
 def _valores_de_respuesta(respuesta: object) -> list[str]:

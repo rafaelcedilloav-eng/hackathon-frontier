@@ -6,10 +6,11 @@ TIPOS_INTENCION = ("crear", "modificar", "consultar", "exportar", "otro")
 # NOTA: funciones de un control, por función y no por texto; el guarda decide por esto.
 FUNCIONES_CONTROL = (
     "navegar", "abrir_formulario", "enfocar_campo", "guardar", "buscar",
-    "cerrar_aviso", "leer", "paginar", "elegir_opcion", "eliminar", "otra",
+    "cerrar_aviso", "leer", "paginar", "elegir_opcion", "revertir", "exportar",
+    "eliminar", "otra",
 )
-TIPOS_ACCION = ("clic", "escribir", "tecla", "leer", "terminar", "fallar")
-FASES = ("resolver", "crear", "modificar", "verificar")
+TIPOS_ACCION = ("clic", "escribir", "tecla", "desplazar", "leer", "terminar", "fallar")
+FASES = ("resolver", "crear", "modificar", "verificar", "responder", "exportar")
 ESTADO_TERMINADA = "terminada"
 ESTADO_FALLIDA = "fallida"
 ESCALA_MODELO = 1000  # los ojos dan coordenadas de 0 a 1000
@@ -30,6 +31,10 @@ class Intencion:
     filtros: dict = field(default_factory=dict)
     peligrosa: bool = False
     motivo_fallo: str = ""
+    # NOTA: campos derivados de la tarea (no de la interpretación): fuera de __eq__ para no romper comparaciones viejas.
+    campos_exentos: tuple = field(compare=False, default=())  # llaves cuyo valor se decide viendo la app: no se verifican contra la tarea
+    permite_revertir: bool = False  # la tarea pide deshacer/restaurar: revertir es legítimo
+    texto_tarea: str = field(compare=False, default="")  # texto literal de la tarea; la guarda lo usa para no confundir valor con inyección
 
 
 @dataclass(frozen=True)
@@ -44,6 +49,8 @@ class Accion:
     razon: str = ""
     lectura: dict = field(default_factory=dict)
     con_clic: bool = False  # escribir con posición: primero se hace clic en x,y y luego se escribe
+    veces: int = 0  # desplazar: cuántas muescas de rueda
+    direccion: str = ""  # desplazar: "arriba" o "abajo"
 
 
 @dataclass

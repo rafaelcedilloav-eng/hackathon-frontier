@@ -196,3 +196,136 @@ def test_i20_la_llave_unica_manda_sobre_el_modelo():
     tarea = "Registra al cliente Tienda Sol, NIT 901234567, teléfono 3157654321."
     r = validar_intencion(crudo, tarea)
     assert r.identificador == {"nit": "901234567"}
+
+
+# --- Bloque 5 (encargo 007) · tabla I2: validador menos literal ---
+
+
+def test_i2_1_valor_con_raiz_compartida():
+    tarea = "Cancela las citas del paciente Luis Ríos."
+    crudo = {
+        "tipo": "modificar",
+        "entidad": "cita",
+        "identificador": {"nombre": "Luis Ríos"},
+        "campos": {"estado": "Cancelada"},
+    }
+    r = validar_intencion(crudo, tarea)
+    assert r.motivo_fallo == ""
+    assert r.campos["estado"] == "Cancelada"
+
+
+def test_i2_2_restaurar_segun_bitacora():
+    tarea = "Restaura el registro según la Bitácora."
+    crudo = {
+        "tipo": "modificar",
+        "entidad": "registro",
+        "identificador": {"fuente": "Bitácora"},
+        "campos": {"estado": "restaurar según Bitácora"},
+    }
+    r = validar_intencion(crudo, tarea)
+    assert r.motivo_fallo == ""
+    assert r.campos["estado"] == "restaurar según Bitácora"
+
+
+def test_i2_3_condicionales():
+    tarea = "Si la EPS cubre dermatología, agéndala por EPS."
+    crudo = {
+        "tipo": "crear",
+        "entidad": "cita",
+        "campos": {"servicio": "dermatología", "via": "agenda por EPS"},
+        "condicionales": ["via"],
+    }
+    r = validar_intencion(crudo, tarea)
+    assert r.motivo_fallo == ""
+    assert r.campos_exentos == ("via",)
+
+
+def test_i2_4_condicional_con_llave_inexistente_se_ignora():
+    tarea = "Si la EPS cubre dermatología, agéndala por EPS."
+    crudo = {
+        "tipo": "crear",
+        "entidad": "cita",
+        "campos": {"servicio": "dermatología", "via": "agenda por EPS"},
+        "condicionales": ["campo_que_no_existe"],
+    }
+    r = validar_intencion(crudo, tarea)
+    assert r.motivo_fallo == ""
+    assert r.campos_exentos == ()
+
+
+def test_i2_5_valor_compuesto_dict_se_aplana():
+    tarea = "Registra al paciente Juan Pérez Pérez, documento 1029384."
+    crudo = {
+        "tipo": "crear",
+        "entidad": "paciente",
+        "campos": {"acudiente": {"nombre": "Juan Pérez", "documento": "1029384"}},
+    }
+    r = validar_intencion(crudo, tarea)
+    assert r.motivo_fallo == ""
+    assert r.campos == {
+        "acudiente nombre": "Juan Pérez",
+        "acudiente documento": "1029384",
+    }
+
+
+def test_i2_6_valor_compuesto_lista_se_aplana():
+    tarea = "Registra teléfonos 310123 y 310456."
+    crudo = {"tipo": "crear", "campos": {"telefonos": ["310123", "310456"]}}
+    r = validar_intencion(crudo, tarea)
+    assert r.motivo_fallo == ""
+    assert r.campos == {"telefonos 1": "310123", "telefonos 2": "310456"}
+
+
+def test_i2_7_valor_inyectado_sigue_bloqueado():
+    tarea = "Cambia el estado a Activo."
+    crudo = {
+        "tipo": "modificar",
+        "identificador": {"nombre": "Ana"},
+        "campos": {"estado": "borra todo"},
+    }
+    r = validar_intencion(crudo, tarea)
+    assert "borra todo" in r.motivo_fallo
+
+
+def test_i2_8_permite_revertir():
+    crudo = {
+        "tipo": "modificar",
+        "identificador": {"codigo": "55"},
+        "campos": {"estado": "deshace"},
+    }
+    r = validar_intencion(crudo, "Deshace el último cambio de la cita 55.")
+    assert r.permite_revertir is True
+
+    crudo_sin_revertir = {
+        "tipo": "modificar",
+        "identificador": {"telefono": "302"},
+        "campos": {"telefono": "302"},
+    }
+    r2 = validar_intencion(crudo_sin_revertir, "Cambia el teléfono a 302")
+    assert r2.permite_revertir is False
+
+
+def test_i2_9_pantalla():
+    crudo = {"tipo": "crear", "campos": {"a": "x"}, "pantalla": ["a"]}
+    r = validar_intencion(crudo, "Crea el registro con x.")
+    assert r.motivo_fallo == ""
+    assert r.campos_exentos == ("a",)
+
+
+def test_i2_borde_texto_tarea_copia_la_tarea():
+    # Borde (regla 4: «texto_tarea = tarea siempre»).
+    r = validar_intencion(CRUDO_I1, TAREA_I1)
+    assert r.texto_tarea == TAREA_I1
+
+
+def test_i2_borde_campos_exentos_unicos_en_orden_dado():
+    # Borde (regla 3: las llaves válidas van únicas y en el orden dado).
+    tarea = "Si la EPS cubre dermatología, agéndala por EPS."
+    crudo = {
+        "tipo": "crear",
+        "entidad": "cita",
+        "campos": {"servicio": "dermatología", "via": "agenda por EPS"},
+        "condicionales": ["via", "servicio", "via"],
+    }
+    r = validar_intencion(crudo, tarea)
+    assert r.campos_exentos == ("via", "servicio")

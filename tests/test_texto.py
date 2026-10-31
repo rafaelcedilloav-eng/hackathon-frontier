@@ -67,3 +67,77 @@ def test_t14_valores_iguales_cadenas_vacias():
 
 def test_t15_valores_iguales_acentos_cuentan():
     assert valores_iguales("Café", "Cafe") is False
+
+
+# --- Bloque 5 (encargo 007) · tabla T2: raiz_compartida y es_letra_de_valor ---
+# NOTA: las funciones nuevas del bloque 5 se importan dentro de cada prueba
+# porque todavía no existen en texto.py; así solo fallan estas y no se rompe
+# la recolección de las pruebas de la tabla T del encargo 004.
+
+
+def test_t2_1_raiz_compartida_cancelada():
+    from frontier_agente.texto import raiz_compartida
+
+    assert raiz_compartida("Cancelada", "cancela las citas del paciente") is True
+
+
+def test_t2_2_raiz_compartida_con_acentos():
+    from frontier_agente.texto import raiz_compartida
+
+    assert (
+        raiz_compartida(
+            "restaurar según Bitácora", "restaura el estado según la Bitácora"
+        )
+        is True
+    )
+
+
+def test_t2_3_raiz_compartida_consulta_general():
+    from frontier_agente.texto import raiz_compartida
+
+    assert (
+        raiz_compartida("Consulta medicina general", "agéndale una consulta general")
+        is True
+    )
+
+
+def test_t2_4_raiz_compartida_sin_coincidencia():
+    from frontier_agente.texto import raiz_compartida
+
+    assert raiz_compartida("borra todos los pedidos", "cambia el teléfono a 302") is False
+
+
+def test_t2_5_analista_no_es_analisis():
+    # Palabra completa contra palabra completa: «analista» no es prefijo de
+    # «análisis» ni al revés, aunque compartan el prefijo «anali».
+    from frontier_agente.texto import raiz_compartida
+
+    assert raiz_compartida("Analista", "análisis de sangre") is False
+
+
+def test_t2_6_es_letra_de_valor_digitos():
+    from frontier_agente.texto import es_letra_de_valor
+
+    assert es_letra_de_valor("302", "múevelo al consultorio 302") is True
+
+
+def test_t2_7_raiz_compartida_vacia_o_corta():
+    from frontier_agente.texto import raiz_compartida
+
+    assert raiz_compartida("xyz", "") is False
+    assert raiz_compartida("", "abc") is False
+
+
+def test_t2_borde_subcadena_literal_con_palabra_corta():
+    # Borde (prosa): las palabras de menos de 5 letras no cuentan para la raíz
+    # pero sí para la subcadena literal.
+    from frontier_agente.texto import es_letra_de_valor
+
+    assert es_letra_de_valor("Cali", "Registra al cliente en Cali") is True
+
+
+def test_t2_borde_es_letra_de_valor_sin_coincidencia():
+    # Borde (prosa): sin subcadena, sin dígitos y sin raíz compartida → False.
+    from frontier_agente.texto import es_letra_de_valor
+
+    assert es_letra_de_valor("Medellín", "Registra al cliente en Cali") is False

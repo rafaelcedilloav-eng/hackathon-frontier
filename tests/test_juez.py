@@ -51,3 +51,30 @@ def test_j8_lectura_no_dict_o_vacia():
     ]
     assert comparar_campos({"a": "1"}, "texto") == [Diferencia("a", "1", "")]
     assert comparar_campos({"a": "1"}, {}) == [Diferencia("a", "1", "")]
+
+
+# --- Bloque 5 (encargo 007) · tabla J2: exentos en comparar_campos ---
+
+
+def test_j2_1_exentos_no_generan_diferencia():
+    assert comparar_campos(
+        {"estado": "Cancelada", "via": "EPS"},
+        {"estado": "cancelada", "via": "otra cosa"},
+        exentos=("via",),
+    ) == []
+
+
+def test_j2_2_sin_exentos_la_diferencia_aparece():
+    assert comparar_campos(
+        {"estado": "Cancelada", "via": "EPS"},
+        {"estado": "cancelada", "via": "otra cosa"},
+    ) == [Diferencia("via", "EPS", "otra cosa")]
+
+
+def test_j2_3_exento_ausente_en_la_lectura():
+    assert comparar_campos({"a": "1"}, {}, exentos=("a",)) == []
+
+
+def test_j2_borde_exento_que_no_esta_en_esperado():
+    # Borde (prosa): una llave exenta que no está en el esperado no produce nada.
+    assert comparar_campos({"a": "1"}, {"a": "1"}, exentos=("z",)) == []
