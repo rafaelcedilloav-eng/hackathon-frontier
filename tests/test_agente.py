@@ -455,3 +455,31 @@ def test_A35_tipo_otro_falla_sin_abrir_pantalla():
     assert estado == "fallida"
     assert "no soportado" in resumen
     assert espia.llamadas == 0
+
+
+def test_A36_exportar_terminada_sin_clic_de_exportar_es_fallida():
+    pantalla = PantallaFalsa()
+    # NOTA: la fase aplicó un filtro y dijo terminar, pero nadie pulsó el
+    # control de exportar: no puede darse por buena.
+    acciones = [clic_json(500, 250, "buscar"), terminar_json("reporte listo")]
+    llamar = LlamarGuionado(JSON_EXPORTAR, acciones)
+    abrir = AbrirPantallaFalsa(pantalla)
+    estado, resumen = correr_tarea(TAREA_EXPORTAR, llamar, abrir)
+    assert estado == "fallida"
+    assert "no se ejecutó la exportación" in resumen
+    assert "Exporté el reporte" not in resumen
+    # NOTA: la fase sí corrió (el clic del filtro llegó a la pantalla) y se cerró.
+    assert pantalla.acciones == [("clic", 640, 200)]
+    assert pantalla.cerrada
+
+
+def test_A37_respuesta_con_saltos_y_espacios_se_aplana():
+    pantalla = PantallaFalsa()
+    acciones = [*GUION_RESPONDER, leer_json({"respuesta": "  45  \n 12"})]
+    llamar = LlamarGuionado(JSON_CONSULTAR_NUMERO, acciones)
+    abrir = AbrirPantallaFalsa(pantalla)
+    estado, resumen = correr_tarea(TAREA_CONSULTAR_NUMERO, llamar, abrir)
+    assert estado == "terminada"
+    # NOTA: la respuesta se aplana a una línea: sin saltos de línea y con los
+    # espacios internos reducidos a uno; la primera línea queda exacta.
+    assert resumen.splitlines()[0] == "respuesta: 45 12"

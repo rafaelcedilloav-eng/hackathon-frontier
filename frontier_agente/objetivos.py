@@ -99,15 +99,21 @@ def objetivo_verificar(intencion: Intencion) -> str:
 
 def objetivo_responder(intencion: Intencion) -> str:
     # NOTA: fase responder: filtra, lee el dato que pide la pregunta y lo devuelve
-    # como texto exacto en lectura; el total lo trae la aplicación, nunca el conteo a ojo.
+    # como texto en lectura; para contar va la receta en orden (hallazgo E3:
+    # paginar en círculos agotaba los pasos), con el total de la app primero.
     return (
         "Estás en la fase de responder. "
         "La aplicación muestra la fecha de hoy y "
         f"{FRASE_RELATIVAS}. "
         f"Responde a esta pregunta: {intencion.pregunta} "
         f"{frase_de_busqueda(intencion)}"
-        "Si la pregunta pide contar, usa el total que muestra la aplicación; si solo "
-        "muestra filas, pasa de página y suma lo que se ve: nunca cuentes a ojo. "
+        "Si la pregunta pide contar, sigue esta receta en orden: "
+        "primero aplica los filtros con el buscador de la aplicación y ejecuta la búsqueda; "
+        "si la aplicación muestra un total de resultados (junto a la lista o en la "
+        "paginación), responde con ese número; si no lo muestra, cuenta página por "
+        "página, en orden y sin repetir ninguna: cuenta las filas visibles de la página "
+        "en la que estás, pasa a la siguiente y repite hasta la última, y responde con "
+        "la suma. Nunca cuentes de una sola mirada ni vuelvas a una página anterior. "
         "Si la pregunta pide un dato de un registro, abre ese registro y lee ese dato en él. "
         "Cuando tengas la respuesta con certeza, responde con la acción leer y "
         'lectura = {"respuesta": "<texto exacto>"}; con un solo dato va ese dato y '
@@ -117,12 +123,19 @@ def objetivo_responder(intencion: Intencion) -> str:
 
 
 def objetivo_exportar(intencion: Intencion) -> str:
-    # NOTA: fase exportar: aplicar los filtros del reporte, pulsar exportar una
-    # sola vez y terminar al ver el reporte generado o descargado.
+    # NOTA: fase exportar: aplicar los filtros del reporte (solo si hay),
+    # pulsar exportar una sola vez y terminar al ver el reporte generado o descargado.
+    if intencion.filtros:
+        aplicacion = (
+            "Aplica en el reporte estos filtros: "
+            + pares_de_texto(intencion.filtros) + "; "
+        )
+    else:
+        aplicacion = ""
     return (
         "Estás en la fase de exportar. "
-        "Abre el reporte y aplica estos filtros: "
-        f"{pares_de_texto(intencion.filtros)}; {FRASE_RELATIVAS}. "
+        "Abre el reporte. "
+        f"{aplicacion}Recuerda que {FRASE_RELATIVAS}. "
         "Pulsa el control de exportar (en la acción, funcion exportar) una sola vez. "
         "Cuando veas el reporte generado o descargado, responde con la acción terminar. "
         "Si algo lo impide, responde con la acción fallar y la razón."

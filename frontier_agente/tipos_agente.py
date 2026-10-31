@@ -59,6 +59,7 @@ class EstadoLazo:
     fase: str = "resolver"
     pasos: int = 0
     guardados: int = 0
+    exportados: int = 0  # clics con funcion exportar ejecutados; sin uno, una exportacion nunca es terminada
     posicion_guardado: tuple = ()  # coordenadas 0-1000 del clic que guardó; vacía si no hay
     campos_escritos: set = field(default_factory=set)
     bloqueos: int = 0

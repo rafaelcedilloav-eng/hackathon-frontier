@@ -252,6 +252,14 @@ def registrar_accion(accion: Accion, intencion: Intencion, estado: EstadoLazo) -
         estado.guardados += 1
         if accion.tipo == "clic":
             estado.posicion_guardado = (accion.x, accion.y)
+    if _es_un_exportar(accion):
+        estado.exportados += 1
+
+
+def _es_un_exportar(accion: Accion) -> bool:
+    # NOTA: bloque 7: solo un clic con funcion exportar ejecuta la exportación;
+    # registrar_accion lo cuenta en estado.exportados, como cuenta los guardados.
+    return accion.funcion == FUNCION_EXPORTAR and accion.tipo == "clic"
 
 
 def _declara_valor_de_campo(accion: Accion) -> bool:

@@ -41,24 +41,27 @@ from frontier_agente.tipos_agente import (
 
 logger = logging.getLogger(__name__)
 
-# NOTA: tipos de tarea que este bloque sabe ejecutar; el resto cae en no soportado.
-TIPOS_SOPORTADOS = ("crear", "modificar", "consultar", "exportar")
+# NOTA: llave de la lectura de una consulta y fases finales de un lazo.
 CAMPO_CANDIDATOS = "candidatos"
 CLAVE_RESPUESTA = "respuesta"
 TIPO_FASE_LEER = "leer"
 TIPO_FASE_TERMINAR = "terminar"
 TIPO_FASE_FALLAR = "fallar"
 
-# NOTA: motivos fijos de las fallidas del agente (los que no salen de una fase).
+# NOTA: motivos fijos de las fallidas del agente (los que no salen de una fase);
+# no hay motivo de «tipo no soportado»: el validador ya manda a fallida los tipos
+# que no son crear/modificar/consultar/exportar (con motivo_fallo, antes del despacho).
 MOTIVO_NO_INTERPRETE = "no pude interpretar la tarea (ErrorModelo)"
-MOTIVO_TIPO_NO_SOPORTADO = "este tipo de tarea todavía no está soportado"
 MOTIVO_YA_EXISTE = "ya existe un registro con ese dato"
 MOTIVO_NO_ENCONTRADO = "no encontré el registro que busqué: "
 MOTIVO_AMBIGUO = "hay varios registros que coinciden y la tarea no dice cuál"
 MOTIVO_NO_GUARDADO = "no se guardó nada"
 MOTIVO_NO_CONFIRMADO = "no pude confirmar el resultado releyendo el registro"
 MOTIVO_SIN_RESPUESTA = "no pude leer la respuesta en la pantalla"
-MOTIVO_NO_EXPORTADO = "no vi el reporte generado ni descargado"
+MOTIVO_NO_EXPORTADO = "no se ejecutó la exportación"
+# NOTA: contar con paginación necesita más pasos que una fase normal (hallazgo E3:
+# con 14 el modelo paginó en círculos y agotó los pasos).
+PASOS_FASE_RESPONDER = 22
 MOTIVO_CANDIDATOS_INVALIDOS = "la lectura de la búsqueda no trajo una lista de candidatos"
 PLANTILLA_FALLA_CONEXION = "falló la conexión con el escritorio ({clase})"
 PLANTILLA_ERROR_INTERNO = "error interno ({clase})"
@@ -146,8 +149,6 @@ async def _correr(
         return (*_fallida(MOTIVO_NO_INTERPRETE, None), COSTO_DESCONOCIDO)
     if intencion.peligrosa or intencion.motivo_fallo:
         return (*_fallida(intencion.motivo_fallo, intencion), COSTO_DESCONOCIDO)
-    if intencion.tipo not in TIPOS_SOPORTADOS:
-        return (*_fallida(MOTIVO_TIPO_NO_SOPORTADO, intencion), COSTO_DESCONOCIDO)
     async with abrir(escritorio) as pantalla:
         ojos = Ojos(llamar)
         estado = EstadoLazo()
@@ -194,8 +195,10 @@ async def _consultar(
 ) -> tuple[str, str]:
     # NOTA: fase única responder: la respuesta la trae el modelo desde la
     # pantalla; sin fase de verificar y sin juez (no hay esperado comparable).
+    # Con tope de pasos ampliado: contar página por página gasta más que leer un dato.
     resultado = await ejecutar_fase(
-        "responder", objetivo_responder(intencion), intencion, pantalla, ojos, estado
+        "responder", objetivo_responder(intencion), intencion, pantalla, ojos, estado,
+        max_pasos_fase=PASOS_FASE_RESPONDER,
     )
     notas.extend(resultado.notas)
     if resultado.tipo == TIPO_FASE_FALLAR:
@@ -222,18 +225,21 @@ async def _exportar(
     notas.extend(resultado.notas)
     if resultado.tipo == TIPO_FASE_FALLAR:
         return _fallida(resultado.razon, intencion, notas=notas)
-    if resultado.tipo != TIPO_FASE_TERMINAR:
+    # NOTA: un terminar sin clic de exportar no vale (falso éxito real): el
+    # guarda lo cuenta en estado.exportados, como cuenta los guardados.
+    if resultado.tipo != TIPO_FASE_TERMINAR or estado.exportados < 1:
         return _fallida(MOTIVO_NO_EXPORTADO, intencion, notas=notas)
     exito = ResultadoTarea(estado=ESTADO_TERMINADA, campos_verificados={}, notas=tuple(notas))
     return armar_resumen(exito, intencion)
 
 
 def _respuesta_de_lectura(resultado: ResultadoFase) -> str | None:
-    # NOTA: la respuesta de una consulta es texto no vacío en lectura["respuesta"]; sin ella no hay consulta resuelta.
+    # NOTA: la respuesta de una consulta es texto no vacío en lectura["respuesta"],
+    # aplano a una sola línea (espacios internos a uno, sin saltos) antes del resumen.
     respuesta = resultado.lectura.get(CLAVE_RESPUESTA)
-    if isinstance(respuesta, str) and respuesta.strip():
-        return respuesta
-    return None
+    if not isinstance(respuesta, str) or not respuesta.strip():
+        return None
+    return " ".join(respuesta.split())
 
 
 async def _crear(
