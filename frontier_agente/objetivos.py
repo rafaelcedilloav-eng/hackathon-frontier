@@ -117,6 +117,12 @@ def objetivo_responder(intencion: Intencion) -> str:
         "página sin haber contado la anterior, vuelve a la que falta, cuéntala y sigue "
         "desde ahí; lo prohibido es repetir páginas ya contadas, no recuperar una que te "
         "saltaste. Nunca cuentes de una sola mirada. "
+        "Tu conteo parcial vive en tu razon: termina cada razon con "
+        '"CONTEO: <número acumulado> (páginas contadas: <lista>)" y confía en él al '
+        "llegar a una página nueva: no re-cuentes una página que tu razon anterior ya "
+        "contó. Para pasar de página usa los controles de paginación de la lista "
+        "(anterior/siguiente), nunca las filas: una fila abre su detalle y te saca de "
+        "la lista. "
         "Si la pregunta pide un dato de un registro, abre ese registro y lee ese dato en él. "
         "Cuando tengas la respuesta con certeza, responde con la acción leer y "
         'lectura = {"respuesta": "<texto exacto>"}; con un solo dato va ese dato y '
@@ -126,20 +132,23 @@ def objetivo_responder(intencion: Intencion) -> str:
 
 
 def objetivo_exportar(intencion: Intencion) -> str:
-    # NOTA: fase exportar: aplicar los filtros del reporte (solo si hay),
-    # pulsar exportar una sola vez y terminar al ver el reporte generado o descargado.
+    # NOTA: fase exportar (E4): el reporte ES la lista de la entidad de la tarea;
+    # se filtra con su buscador y se exporta desde esa misma lista, sin menús de «reportes».
     if intencion.filtros:
         aplicacion = (
-            "Aplica en el reporte estos filtros: "
+            "aplica estos filtros con su buscador: "
             + pares_de_texto(intencion.filtros) + "; "
         )
     else:
         aplicacion = ""
     return (
         "Estás en la fase de exportar. "
-        "Abre el reporte. "
-        f"{aplicacion}Recuerda que {FRASE_RELATIVAS}. "
-        "Pulsa el control de exportar (en la acción, funcion exportar) una sola vez. "
-        "Cuando veas el reporte generado o descargado, responde con la acción terminar. "
+        "El reporte es la lista de los registros de la entidad de esta tarea, no un menú aparte: "
+        f"ábrela en su módulo de {intencion.entidad} sin buscar un menú de «reportes». "
+        f"Cuando la tengas abierta, {aplicacion}"
+        f"{FRASE_RELATIVAS}. "
+        "Pulsa el control de exportar de esa misma lista (en la acción, funcion exportar) "
+        "una sola vez y, al ver el archivo generado, descargado o confirmado, "
+        "responde con la acción terminar. "
         "Si algo lo impide, responde con la acción fallar y la razón."
     )
