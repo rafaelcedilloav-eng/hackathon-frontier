@@ -1,0 +1,8 @@
+# Capturas y trazas del escritorio: pueden mostrar datos de la app. Nunca al repo.
+logs/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+.env.*
+*.log

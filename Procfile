@@ -1,0 +1,1 @@
+web: python -m frontier_agente

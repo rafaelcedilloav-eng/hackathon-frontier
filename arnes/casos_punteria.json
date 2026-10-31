@@ -1,0 +1,12 @@
+[
+ {"nombre":"menu_archivo","descripcion":"el menú superior «Archivo»","preparar":[],"caja":[6,36,79,61]},
+ {"nombre":"menu_comercial","descripcion":"el menú superior «Comercial»","preparar":[],"caja":[79,36,168,61]},
+ {"nombre":"menu_cartera","descripcion":"el menú superior «Cartera»","preparar":[],"caja":[168,36,241,61]},
+ {"nombre":"menu_herramientas","descripcion":"el menú superior «Herramientas»","preparar":[],"caja":[241,36,353,61]},
+ {"nombre":"menu_ayuda","descripcion":"el menú superior «Ayuda»","preparar":[],"caja":[353,36,417,61]},
+ {"nombre":"opcion_facturas","descripcion":"la opción «Facturas» del menú desplegado","preparar":[[204,48]],"caja":[169,64,377,90]},
+ {"nombre":"opcion_maestros","descripcion":"la opción «Maestros» del menú desplegado","preparar":[[122,48]],"caja":[80,64,288,90]},
+ {"nombre":"opcion_ventas","descripcion":"la opción «Ventas» del menú desplegado","preparar":[[122,48]],"caja":[80,91,288,117]},
+ {"nombre":"opcion_bitacora","descripcion":"la opción «Bitácora de cambios» del menú desplegado","preparar":[[296,48]],"caja":[242,64,450,90]},
+ {"nombre":"opcion_inicio","descripcion":"la opción «Inicio» del menú desplegado","preparar":[[42,48]],"caja":[7,64,215,90]}
+]
