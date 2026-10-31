@@ -13,7 +13,14 @@ from frontier_agente.interprete import interpretar
 from frontier_agente.juez import comparar_campos
 from frontier_agente.lazo import Pantalla, VARIABLE_TRAZA, ejecutar_fase
 from frontier_agente.modelo import llamar_modelo
-from frontier_agente.objetivos import objetivo_escribir, objetivo_resolver, objetivo_verificar, pares_de_texto
+from frontier_agente.objetivos import (
+    objetivo_escribir,
+    objetivo_exportar,
+    objetivo_responder,
+    objetivo_resolver,
+    objetivo_verificar,
+    pares_de_texto,
+)
 from frontier_agente.ojos import Ojos
 from frontier_agente.resolutor import resolver
 from frontier_agente.resumen import depurar_resumen
@@ -35,8 +42,12 @@ from frontier_agente.tipos_agente import (
 logger = logging.getLogger(__name__)
 
 # NOTA: tipos de tarea que este bloque sabe ejecutar; el resto cae en no soportado.
-TIPOS_SOPORTADOS = ("crear", "modificar")
+TIPOS_SOPORTADOS = ("crear", "modificar", "consultar", "exportar")
 CAMPO_CANDIDATOS = "candidatos"
+CLAVE_RESPUESTA = "respuesta"
+TIPO_FASE_LEER = "leer"
+TIPO_FASE_TERMINAR = "terminar"
+TIPO_FASE_FALLAR = "fallar"
 
 # NOTA: motivos fijos de las fallidas del agente (los que no salen de una fase).
 MOTIVO_NO_INTERPRETE = "no pude interpretar la tarea (ErrorModelo)"
@@ -46,6 +57,8 @@ MOTIVO_NO_ENCONTRADO = "no encontré el registro que busqué: "
 MOTIVO_AMBIGUO = "hay varios registros que coinciden y la tarea no dice cuál"
 MOTIVO_NO_GUARDADO = "no se guardó nada"
 MOTIVO_NO_CONFIRMADO = "no pude confirmar el resultado releyendo el registro"
+MOTIVO_SIN_RESPUESTA = "no pude leer la respuesta en la pantalla"
+MOTIVO_NO_EXPORTADO = "no vi el reporte generado ni descargado"
 MOTIVO_CANDIDATOS_INVALIDOS = "la lectura de la búsqueda no trajo una lista de candidatos"
 PLANTILLA_FALLA_CONEXION = "falló la conexión con el escritorio ({clase})"
 PLANTILLA_ERROR_INTERNO = "error interno ({clase})"
@@ -125,7 +138,8 @@ async def _correr(
     abrir: AbrirPantalla,
     llamar: LlamarModelo,
 ) -> tuple[str, str, float]:
-    # NOTA: interpreta, despacha por tipo y corre las fases con la pantalla abierta.
+    # NOTA: interpreta, despacha por tipo y corre las fases con la pantalla abierta;
+    # consultar y exportar van a su fase única (bloque 7), el resto a escribir.
     try:
         intencion = await interpretar(tarea, llamar)
     except ErrorModelo:
@@ -138,21 +152,88 @@ async def _correr(
         ojos = Ojos(llamar)
         estado = EstadoLazo()
         notas: list[str] = []
-        resultado = await ejecutar_fase(
-            "resolver", objetivo_resolver(intencion), intencion, pantalla, ojos, estado
-        )
-        notas.extend(resultado.notas)
-        if resultado.tipo != "leer":
-            return (*_fallida(resultado.razon, intencion, notas=notas), ojos.costo_total)
-        crudos = resultado.lectura.get(CAMPO_CANDIDATOS)
-        if not isinstance(crudos, list):
-            return (*_fallida(MOTIVO_CANDIDATOS_INVALIDOS, intencion, notas=notas), ojos.costo_total)
-        candidatos = [c for c in (_candidato_de(crudo) for crudo in crudos) if c is not None]
-        if intencion.tipo == "crear":
-            final = await _crear(intencion, pantalla, ojos, estado, candidatos, notas)
+        if intencion.tipo == "consultar":
+            final = await _consultar(intencion, pantalla, ojos, estado, notas)
+        elif intencion.tipo == "exportar":
+            final = await _exportar(intencion, pantalla, ojos, estado, notas)
         else:
-            final = await _modificar(intencion, pantalla, ojos, estado, candidatos, notas)
+            final = await _escribir_registro(intencion, pantalla, ojos, estado, notas)
         return (*final, ojos.costo_total)
+
+
+async def _escribir_registro(
+    intencion: Intencion,
+    pantalla: Pantalla,
+    ojos: Ojos,
+    estado: EstadoLazo,
+    notas: list[str],
+) -> tuple[str, str]:
+    # NOTA: crear y modificar: primero resolver (buscar sin tocar), y solo
+    # después escribir y verificar; los candidatos del resolver deciden.
+    resultado = await ejecutar_fase(
+        "resolver", objetivo_resolver(intencion), intencion, pantalla, ojos, estado
+    )
+    notas.extend(resultado.notas)
+    if resultado.tipo != TIPO_FASE_LEER:
+        return _fallida(resultado.razon, intencion, notas=notas)
+    crudos = resultado.lectura.get(CAMPO_CANDIDATOS)
+    if not isinstance(crudos, list):
+        return _fallida(MOTIVO_CANDIDATOS_INVALIDOS, intencion, notas=notas)
+    candidatos = [c for c in (_candidato_de(crudo) for crudo in crudos) if c is not None]
+    if intencion.tipo == "crear":
+        return await _crear(intencion, pantalla, ojos, estado, candidatos, notas)
+    return await _modificar(intencion, pantalla, ojos, estado, candidatos, notas)
+
+
+async def _consultar(
+    intencion: Intencion,
+    pantalla: Pantalla,
+    ojos: Ojos,
+    estado: EstadoLazo,
+    notas: list[str],
+) -> tuple[str, str]:
+    # NOTA: fase única responder: la respuesta la trae el modelo desde la
+    # pantalla; sin fase de verificar y sin juez (no hay esperado comparable).
+    resultado = await ejecutar_fase(
+        "responder", objetivo_responder(intencion), intencion, pantalla, ojos, estado
+    )
+    notas.extend(resultado.notas)
+    if resultado.tipo == TIPO_FASE_FALLAR:
+        return _fallida(resultado.razon, intencion, notas=notas)
+    respuesta = _respuesta_de_lectura(resultado)
+    if respuesta is None:
+        return _fallida(MOTIVO_SIN_RESPUESTA, intencion, notas=notas)
+    exito = ResultadoTarea(estado=ESTADO_TERMINADA, respuesta=(respuesta,), notas=tuple(notas))
+    return armar_resumen(exito, intencion)
+
+
+async def _exportar(
+    intencion: Intencion,
+    pantalla: Pantalla,
+    ojos: Ojos,
+    estado: EstadoLazo,
+    notas: list[str],
+) -> tuple[str, str]:
+    # NOTA: fase única exportar: un terminar vale como éxito; la regla de
+    # «no se guardó nada» no corre porque no hay fase de escritura.
+    resultado = await ejecutar_fase(
+        "exportar", objetivo_exportar(intencion), intencion, pantalla, ojos, estado
+    )
+    notas.extend(resultado.notas)
+    if resultado.tipo == TIPO_FASE_FALLAR:
+        return _fallida(resultado.razon, intencion, notas=notas)
+    if resultado.tipo != TIPO_FASE_TERMINAR:
+        return _fallida(MOTIVO_NO_EXPORTADO, intencion, notas=notas)
+    exito = ResultadoTarea(estado=ESTADO_TERMINADA, campos_verificados={}, notas=tuple(notas))
+    return armar_resumen(exito, intencion)
+
+
+def _respuesta_de_lectura(resultado: ResultadoFase) -> str | None:
+    # NOTA: la respuesta de una consulta es texto no vacío en lectura["respuesta"]; sin ella no hay consulta resuelta.
+    respuesta = resultado.lectura.get(CLAVE_RESPUESTA)
+    if isinstance(respuesta, str) and respuesta.strip():
+        return respuesta
+    return None
 
 
 async def _crear(
@@ -204,7 +285,7 @@ async def _tras_escribir(
     notas: list[str],
 ) -> tuple[str, str]:
     # NOTA: la escritura fallida lleva su razón, y un terminar sin guardado no vale.
-    if resultado.tipo == "fallar":
+    if resultado.tipo == TIPO_FASE_FALLAR:
         return _fallida(resultado.razon, intencion, notas=notas)
     if estado.guardados == 0:
         return _fallida(MOTIVO_NO_GUARDADO, intencion, notas=notas)
@@ -223,7 +304,7 @@ async def _verificar(
         "verificar", objetivo_verificar(intencion), intencion, pantalla, ojos, estado
     )
     notas.extend(resultado.notas)
-    if resultado.tipo != "leer" or not resultado.lectura:
+    if resultado.tipo != TIPO_FASE_LEER or not resultado.lectura:
         return _fallida(MOTIVO_NO_CONFIRMADO, intencion, notas=notas)
     diferencias = comparar_campos(intencion.campos, resultado.lectura)
     if diferencias:

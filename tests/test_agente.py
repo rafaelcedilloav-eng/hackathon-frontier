@@ -31,7 +31,6 @@ CONTRASENIA = "Zeta-9981-Prueba"
 ESCRITORIO = Escritorio(url="ws://escritorio-de-prueba:5901", password=CONTRASENIA)
 TAREA_CREAR = "Registra al cliente Tienda Sol, NIT 901234567."
 TAREA_MODIFICAR = "Cambia el teléfono de Ana Torres a 3014445566."
-TAREA_CONSULTAR = "¿Cuál es el teléfono de Ana Torres?"
 
 JSON_CREAR = (
     '{"tipo":"crear","entidad":"cliente","identificador":{"nit":"901234567"},'
@@ -40,10 +39,6 @@ JSON_CREAR = (
 JSON_MODIFICAR = (
     '{"tipo":"modificar","entidad":"cliente","identificador":{"nombre":"Ana Torres"},'
     '"campos":{"telefono":"3014445566"}}'
-)
-JSON_CONSULTAR = (
-    '{"tipo":"consultar","entidad":"cliente","identificador":{},'
-    '"pregunta":"¿Cuál es el teléfono de Ana Torres?"}'
 )
 
 LEER_SIN_CANDIDATOS = leer_json({"candidatos": [], "hay_mas_paginas": False})
@@ -200,13 +195,9 @@ def test_A9_modificar_con_uno_termina_bien():
     assert "Modifiqué el registro verificado" in resumen
 
 
-def test_A10_consulta_aun_no_soportada():
-    espia = AbrirPantallaFalsa(PantallaFalsa())
-    llamar = LlamarGuionado(JSON_CONSULTAR, [])
-    estado, resumen = correr_tarea(TAREA_CONSULTAR, llamar, espia)
-    assert estado == "fallida"
-    assert "todavía no está soportado" in resumen
-    assert espia.llamadas == 0
+# NOTA: A10 (la consulta «todavía no soportada») se retiró en el bloque 7:
+# consultar ya corre (A30-A33) y la regresión de «tipo de tarea no soportado
+# sin abrir pantalla» quedó en A35, con una tarea de tipo otro.
 
 
 def test_A11_error_de_conexion_a_media_fase():
@@ -374,3 +365,93 @@ def test_A2_2_con_la_variable_la_traza_va_ahi(monkeypatch, tmp_path):
     assert traza.is_file(), "la traza no fue a la carpeta de la variable"
     lineas = [linea for linea in traza.read_text(encoding="utf-8").splitlines() if linea.strip()]
     assert lineas
+
+
+# --------------------------------------------- Bloque 7 (tabla A3 del encargo 009)
+
+TAREA_CONSULTAR_NUMERO = "¿Cuántas facturas vencidas tiene Ferretería Ruiz?"
+JSON_CONSULTAR_NUMERO = (
+    '{"tipo":"consultar","entidad":"factura","identificador":{"nombre":"Ferretería Ruiz"},'
+    '"filtros":{"estado":"vencida"},'
+    '"pregunta":"¿Cuántas facturas vencidas tiene Ferretería Ruiz?"}'
+)
+TAREA_EXPORTAR = "Exporta el reporte de facturas desde septiembre."
+JSON_EXPORTAR = '{"tipo":"exportar","entidad":"factura","filtros":{"desde":"septiembre"}}'
+
+
+# NOTA: el guion del responder de cada consulta: clic en el filtro de
+# búsqueda, escribe el nombre (viene del identificador de la tarea) y lee.
+GUION_RESPONDER = [
+    clic_json(500, 250, "buscar"),
+    escribir_json("Ferretería Ruiz"),
+]
+
+
+def test_A30_consulta_terminada_poniendo_la_respuesta_primero():
+    pantalla = PantallaFalsa()
+    acciones = [*GUION_RESPONDER, leer_json({"respuesta": "45"})]
+    llamar = LlamarGuionado(JSON_CONSULTAR_NUMERO, acciones)
+    abrir = AbrirPantallaFalsa(pantalla)
+    estado, resumen = correr_tarea(TAREA_CONSULTAR_NUMERO, llamar, abrir)
+    assert estado == "terminada"
+    assert resumen.splitlines()[0] == "respuesta: 45"
+    assert "Verificado releyendo" not in resumen
+    # NOTA: sin fase verificar y sin juez: solo las 3 llamadas con imagen del responder.
+    assert llamar.llamadas_con_imagen == 3
+    assert pantalla.cerrada
+
+
+def test_A31_consulta_con_dos_datos_en_la_misma_linea():
+    pantalla = PantallaFalsa()
+    acciones = [*GUION_RESPONDER, leer_json({"respuesta": "45; 12"})]
+    llamar = LlamarGuionado(JSON_CONSULTAR_NUMERO, acciones)
+    abrir = AbrirPantallaFalsa(pantalla)
+    estado, resumen = correr_tarea(TAREA_CONSULTAR_NUMERO, llamar, abrir)
+    assert estado == "terminada"
+    assert resumen.splitlines()[0] == "respuesta: 45; 12"
+
+
+def test_A32_consulta_fallida_lleva_su_razon():
+    pantalla = PantallaFalsa()
+    llamar = LlamarGuionado(JSON_CONSULTAR_NUMERO, [fallar_json("no veo el total")])
+    abrir = AbrirPantallaFalsa(pantalla)
+    estado, resumen = correr_tarea(TAREA_CONSULTAR_NUMERO, llamar, abrir)
+    assert estado == "fallida"
+    assert "no veo el total" in resumen
+    assert not any(linea.startswith("respuesta:") for linea in resumen.splitlines())
+
+
+def test_A33_leer_sin_respuesta_es_fallida():
+    pantalla = PantallaFalsa()
+    llamar = LlamarGuionado(JSON_CONSULTAR_NUMERO, [leer_json({})])
+    abrir = AbrirPantallaFalsa(pantalla)
+    estado, resumen = correr_tarea(TAREA_CONSULTAR_NUMERO, llamar, abrir)
+    assert estado == "fallida"
+    assert "no pude leer la respuesta" in resumen
+
+
+def test_A34_exportar_termina_sin_bloqueos_de_guardado():
+    pantalla = PantallaFalsa()
+    acciones = [clic_json(500, 250, "exportar"), terminar_json("reporte generado")]
+    llamar = LlamarGuionado(JSON_EXPORTAR, acciones)
+    abrir = AbrirPantallaFalsa(pantalla)
+    estado, resumen = correr_tarea(TAREA_EXPORTAR, llamar, abrir)
+    assert estado == "terminada"
+    assert "Exporté el reporte" in resumen
+    # NOTA: la regla de «no se guardó nada» solo aplica a fases de escritura.
+    assert "no se guardó nada" not in resumen
+    assert not any(linea.startswith("Nota:") for linea in resumen.splitlines())
+    # NOTA: el clic de exportar llegó a la pantalla: nadie lo bloqueó.
+    assert pantalla.acciones == [("clic", 640, 200)]
+    # NOTA: fase única de exportar: solo sus 2 llamadas con imagen.
+    assert llamar.llamadas_con_imagen == 2
+    assert pantalla.cerrada
+
+
+def test_A35_tipo_otro_falla_sin_abrir_pantalla():
+    espia = AbrirPantallaFalsa(PantallaFalsa())
+    llamar = LlamarGuionado('{"tipo":"otro"}', [])
+    estado, resumen = correr_tarea("Calibra la báscula del almacén", llamar, espia)
+    assert estado == "fallida"
+    assert "no soportado" in resumen
+    assert espia.llamadas == 0

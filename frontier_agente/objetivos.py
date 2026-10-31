@@ -7,6 +7,12 @@ SEPARADOR_PARES = "; "
 PLANTILLA_PAR = "{llave}={valor}"
 MENSAJE_FASE_DESCONOCIDA = "fase de escritura desconocida: {fase!r}"
 
+# NOTA: frase compartida por responder y exportar: hoy fija el punto de partida de las fechas relativas.
+FRASE_RELATIVAS = (
+    "las fechas relativas («ayer», «septiembre») se cuentan desde el "
+    "«Hoy» que muestra la aplicación"
+)
+
 # NOTA: cómo llenar el formulario, por función y sin nombres de la app: listas con clic
 # (elegir_opcion), Tab entre campos de texto, y un aviso de guardado ya vale como guardado.
 GUIA_DE_ESCRITURA = (
@@ -23,6 +29,22 @@ def pares_de_texto(diccionario: dict) -> str:
     # NOTA: cada par llave=valor separado por «; »; así se nombra el registro en los objetivos.
     return SEPARADOR_PARES.join(
         PLANTILLA_PAR.format(llave=llave, valor=valor) for llave, valor in diccionario.items()
+    )
+
+
+def frase_de_busqueda(intencion: Intencion) -> str:
+    # NOTA: arma la orden de filtrar solo con lo que hay (datos y filtros de la
+    # búsqueda); sin nada de nada, la frase entera se omite.
+    partes = []
+    if intencion.identificador:
+        partes.append("datos de búsqueda: " + pares_de_texto(intencion.identificador))
+    if intencion.filtros:
+        partes.append("filtros: " + pares_de_texto(intencion.filtros))
+    if not partes:
+        return ""
+    return (
+        "Usa el filtro o la búsqueda de la aplicación para hallar el registro o la lista: "
+        + SEPARADOR_PARES.join(partes) + ". "
     )
 
 
@@ -72,4 +94,36 @@ def objetivo_verificar(intencion: Intencion) -> str:
         f"{pares_de_texto(intencion.identificador)}, ábrelo y responde con la acción leer "
         "y en lectura un objeto con el valor que se ve en el registro para cada una "
         f"de estas llaves y solo esas: {llaves}."
+    )
+
+
+def objetivo_responder(intencion: Intencion) -> str:
+    # NOTA: fase responder: filtra, lee el dato que pide la pregunta y lo devuelve
+    # como texto exacto en lectura; el total lo trae la aplicación, nunca el conteo a ojo.
+    return (
+        "Estás en la fase de responder. "
+        "La aplicación muestra la fecha de hoy y "
+        f"{FRASE_RELATIVAS}. "
+        f"Responde a esta pregunta: {intencion.pregunta} "
+        f"{frase_de_busqueda(intencion)}"
+        "Si la pregunta pide contar, usa el total que muestra la aplicación; si solo "
+        "muestra filas, pasa de página y suma lo que se ve: nunca cuentes a ojo. "
+        "Si la pregunta pide un dato de un registro, abre ese registro y lee ese dato en él. "
+        "Cuando tengas la respuesta con certeza, responde con la acción leer y "
+        'lectura = {"respuesta": "<texto exacto>"}; con un solo dato va ese dato y '
+        'con dos datos, "dato 1; dato 2" en el orden en que se preguntaron. '
+        "Si no puedes responder con certeza, responde con la acción fallar y la razón."
+    )
+
+
+def objetivo_exportar(intencion: Intencion) -> str:
+    # NOTA: fase exportar: aplicar los filtros del reporte, pulsar exportar una
+    # sola vez y terminar al ver el reporte generado o descargado.
+    return (
+        "Estás en la fase de exportar. "
+        "Abre el reporte y aplica estos filtros: "
+        f"{pares_de_texto(intencion.filtros)}; {FRASE_RELATIVAS}. "
+        "Pulsa el control de exportar (en la acción, funcion exportar) una sola vez. "
+        "Cuando veas el reporte generado o descargado, responde con la acción terminar. "
+        "Si algo lo impide, responde con la acción fallar y la razón."
     )
