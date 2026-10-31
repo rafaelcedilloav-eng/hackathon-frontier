@@ -1,5 +1,7 @@
 """El guarda vigila cada acción antes de ejecutarse y registra el resultado."""
 import math
+import re
+from datetime import datetime
 
 from frontier_agente.texto import (
     es_texto_numerico,
@@ -29,6 +31,14 @@ FUNCION_EXPORTAR = "exportar"
 FASE_EXPORTAR = "exportar"
 MOTIVO_EXPORTAR_FUERA = "no es fase de exportar"
 MINIMO_SUBCADENA_TAREA = 2  # una subcadena de 1 carácter no prueba nada (G2.13)
+# NOTA: fechas derivadas de la regla 6 (E4): formatos numéricos que parsea
+# strptime y fechas con mes en español; el día es 1-31 cuando viene.
+FORMATOS_FECHA_NUMERICAS = ("%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d")
+PATRON_FECHA_CON_MES = re.compile(
+    r"^(?:(?:[1-9]|[12]\d|3[01]) de )?"
+    r"(enero|febrero|marzo|abril|mayo|junio|julio|agosto|"
+    r"septiembre|octubre|noviembre|diciembre) de (\d{4})$"
+)
 # NOTA: única fuente de las constantes de desplazar; ojos.py y rfb_cliente.py las importan de aquí.
 TIPO_DESPLAZAR = "desplazar"
 DIRECCIONES_DESPLAZAR = ("arriba", "abajo")
@@ -170,6 +180,8 @@ def _texto_viene_de_la_tarea(texto: str, intencion: Intencion) -> bool:
         return True
     if _es_subcadena_de_la_tarea(texto, intencion.texto_tarea):
         return True
+    if es_fecha_derivable(texto, intencion.texto_tarea):
+        return True
     valores_exentos = [
         intencion.campos[llave]
         for llave in intencion.campos_exentos
@@ -188,6 +200,28 @@ def _es_subcadena_de_la_tarea(texto: str, texto_tarea: str) -> bool:
     if len(normalizado) < MINIMO_SUBCADENA_TAREA and not es_texto_numerico(normalizado):
         return False
     return normalizado in normalizar_valor(texto_tarea)
+
+
+def es_fecha_derivable(texto: str, texto_tarea: str) -> bool:
+    # NOTA: regla 6 (E4): una tarea que nombra un mes y un año se escribe en el
+    # formulario como fecha concreta; el texto pasa si parsea como fecha de los
+    # formatos permitidos y su año de 4 dígitos aparece en la tarea.
+    anio = _anio_de_fecha(normalizar_valor(texto))
+    if not anio:
+        return False
+    return re.search(rf"(?<!\d){anio}(?!\d)", normalizar_valor(texto_tarea)) is not None
+
+
+def _anio_de_fecha(texto_normalizado: str) -> str:
+    # NOTA: el año de 4 dígitos de la fecha si el texto parsea (numérica por
+    # strptime, o con mes en español por patrón); "" si no parsea como fecha.
+    for formato in FORMATOS_FECHA_NUMERICAS:
+        try:
+            return f"{datetime.strptime(texto_normalizado, formato).year:04d}"
+        except ValueError:
+            continue
+    coincidencia = PATRON_FECHA_CON_MES.match(texto_normalizado)
+    return coincidencia.group(2) if coincidencia else ""
 
 
 def _regla_clic_repetido(accion: Accion, estado: EstadoLazo) -> Veredicto:

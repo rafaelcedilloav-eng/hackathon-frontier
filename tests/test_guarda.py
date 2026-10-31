@@ -454,3 +454,33 @@ def test_G2_14_exportar_solo_en_fase_exportar():
     )
     assert v_creacion.permitida is False
     assert v_creacion.motivo == "no es fase de exportar"
+
+
+# NOTA: la intención de las filas de fecha derivada (G2.15-G2.17): una tarea
+# que pide informes de un mes y un año concretos, sin campos que la salven.
+INTENCION_FECHA = Intencion(
+    tipo="consultar",
+    texto_tarea="Genera el informe de los pedidos entregados en septiembre de 2026.",
+)
+
+
+def test_G2_15_fecha_derivada_con_ano_de_la_tarea():
+    # G2.15: escribir "01/09/2026" con una tarea que habla de "septiembre de
+    # 2026" -> permitida (fecha derivada: el año 2026 está en la tarea).
+    v = evaluar_accion(Accion(tipo="escribir", texto="01/09/2026"), INTENCION_FECHA, estado_crear())
+    assert v.permitida is True
+
+
+def test_G2_16_fecha_derivada_con_ano_ajeno_bloqueada():
+    # G2.16: escribir "01/09/2025" con esa misma tarea -> bloqueada (el año
+    # 2025 no está en la tarea).
+    v = evaluar_accion(Accion(tipo="escribir", texto="01/09/2025"), INTENCION_FECHA, estado_crear())
+    assert v.permitida is False
+    assert "texto no está en la tarea" in v.motivo
+
+
+def test_G2_17_el_mes_solo_es_palabra_de_la_tarea():
+    # G2.17: escribir "septiembre" con esa tarea -> permitida (palabra de la
+    # tarea, como siempre: no necesita la cláusula de fecha).
+    v = evaluar_accion(Accion(tipo="escribir", texto="septiembre"), INTENCION_FECHA, estado_crear())
+    assert v.permitida is True
