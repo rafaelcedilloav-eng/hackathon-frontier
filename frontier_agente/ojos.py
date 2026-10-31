@@ -70,7 +70,11 @@ MENSAJE_SISTEMA = (
     "Un desplegable puede mostrar el valor recortado con \"...\"; si el inicio coincide "
     "con la opción que elegiste, ya está elegido: no lo vuelvas a abrir.\n"
     "Escribe números de documento y teléfonos solo con dígitos, "
-    "sin puntos, comas ni espacios (19.222.336 → 19222336)."
+    "sin puntos, comas ni espacios (19.222.336 → 19222336).\n"
+    "Despues de pulsar el control de guardar, si la pantalla cambia o aparece un aviso, "
+    "ciérralo y vuelve a mirar el formulario: releer sus campos antes de navegar "
+    "a ningún otro lado. Si el formulario sigue abierto con los valores ya escritos, "
+    "eso cuenta como guardado: responde terminar y no guardes otra vez."
 )
 
 # NOTA: tipo de `llamar` de Ojos: recibe mensajes y PNG, devuelve RespuestaModelo.
