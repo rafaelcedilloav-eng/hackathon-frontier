@@ -91,7 +91,7 @@ python -m arnes.correr_practica <ruta>/E1-crear-cliente.json   # los JSON de pr�
 |---|---|---|---|---|---|
 | V1 · 14:01 | 5 / 34 | 3/10 | 2/14 | 0/10 | Validador menos literal; consultar, contar y exportar; guarda que no confunde el valor de la tarea con inyección |
 | V2 · 17:19 · tema nuevo | 10 / 42 | 8/13 | 2/17 | 0/12 | Fechas relativas, opciones de listas, campos derivados exentos, documentos solo con dígitos, releer el formulario tras guardar |
-| V3 · 17:53 · final | en curso | | | | |
+| V3 · 17:53 · final · set completo | 12 / 56 | 10/17 | 2/23 | 0/16 | 0 registros duplicados (en la V2 hubo 1); la guarda ya no bloqueó acciones legítimas |
 
 Cada corrida se diagnosticó tarea por tarea con `GET /tasks/{id}` del propio servidor y la traza paso a paso.
 
