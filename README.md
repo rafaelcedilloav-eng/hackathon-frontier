@@ -1,6 +1,6 @@
 # AETHER Operador · Frontier CDMX 26 · Reto 2
 
-Agente que **opera por pantalla (VNC)** sistemas de gestión sin API ni documentación, y ejecuta tareas en lenguaje natural en apps que nunca ha visto. Responde `terminada` solo cuando **re-leyó y confirmó** el cambio; si no puede confirmarlo, o la tarea es ambigua, peligrosa o imposible, responde `fallida` con el dato que lo explica.
+Agente que **opera por pantalla (VNC)** sistemas de gestión sin API ni documentación, y ejecuta tareas en lenguaje natural en apps que nunca ha visto. Su regla: responde `terminada` solo si el juez confirma lo pedido contra lo que leyó en pantalla; si no puede confirmarlo, o la tarea es ambigua, peligrosa o imposible, responde `fallida` con el dato que lo explica. En la V3 esa regla tuvo un hueco (ver Errata).
 
 > Todo el código de este repo se escribió durante el evento (31-oct-2026).
 
@@ -33,7 +33,7 @@ POST /tasks ─► candado por escritorio + vigilante de 270 s
 | `interprete.py`, `intencion.py` | Tarea en lenguaje natural → intención y parámetros literales |
 | `resolutor.py`, `objetivos.py` | Encuentra el registro objetivo y decide si es único, ambiguo o inexistente |
 | `lazo.py`, `ojos.py`, `guarda.py` | Observar → proponer una acción → filtrarla (¿en el plan? ¿destructiva? ¿segundo guardado?) → ejecutar |
-| `juez.py` | Verificación independiente: búsqueda nueva, abre el registro, compara campo por campo |
+| `juez.py` | Verificación por código: compara campo por campo lo leído contra la tarea. El diseño pedía una búsqueda nueva; en las corridas registradas leyó el formulario abierto (ver Errata) |
 | `resumen.py`, `resumen_tarea.py` | Arma el resumen del contrato y quita cualquier secreto |
 
 ## Cómo correrlo
@@ -93,7 +93,7 @@ python -m arnes.correr_practica <ruta>/E1-crear-cliente.json   # los JSON de pr�
 | V2 · 17:19 · tema nuevo | 10 / 42 | 8/13 | 2/17 | 0/12 | Fechas relativas, opciones de listas, campos derivados exentos, documentos solo con dígitos, releer el formulario tras guardar |
 | V3 · 17:53 · final · set completo | 12 / 56 | 10/17 | 2/23 | 0/16 | la guarda todavía bloqueó el «Confirmar» legítimo en algunas tareas (ver Errata) |
 
-Cada corrida se diagnosticó tarea por tarea con `GET /tasks/{id}` del propio servidor y la traza paso a paso.
+La V1 se diagnosticó tarea por tarea con `GET /tasks/{id}` del propio servidor. La V2 se revisó con la traza paso a paso. De la V3 no guardamos diagnóstico por tarea.
 
 ## Resultados en las pruebas de práctica
 | Prueba | Esperado | Resultado |
@@ -108,7 +108,7 @@ Cada corrida se diagnosticó tarea por tarea con `GET /tasks/{id}` del propio se
 La app cambió a las 15:00, avisado por ticket: **botones movidos, etiquetas distintas y un modal nuevo al abrir**.
 - **Botones y etiquetas ya los resistía:** el agente no guarda posiciones entre tareas, mira la pantalla en cada paso y la guarda decide por la *función* del control (guardar, buscar, exportar), no por su texto ni su lugar.
 - **El modal era el hueco:** ahora los ojos cierran cualquier aviso que tape la app (`cerrar_aviso`), en todas las fases incluida la verificación, sin tratar su texto como orden. Cerrarlo no gasta pasos (tope de 5 por tarea) y queda en la traza como `aviso cerrado: <título>`.
-- **Detectado en producción:** en la validación 2, sobre el tema nuevo, la traza registra el aviso «Novedades de la versión 4» cerrado **56 veces**, y las tareas siguieron.
+- **Visto en producción:** el cambio lo supimos por el ticket, no por un detector propio. El modal se vio por primera vez en la validación 2, ya sobre el tema nuevo: la traza registra el aviso «Novedades de la versión 4» cerrado **56 veces**, y las tareas siguieron.
 - **Segunda adaptación:** el modal también reaparece después de guardar. Ahora, tras guardar, el agente cierra el aviso y **vuelve a leer el formulario** antes de navegar (commit `24b81f9`).
 
 Detalle completo en [`docs/INCIDENTE.md`](docs/INCIDENTE.md) (commit `fb3a1cc`).
@@ -122,4 +122,4 @@ Detalle completo en [`docs/INCIDENTE.md`](docs/INCIDENTE.md) (commit `fb3a1cc`).
 
 ## Errata (1-nov-2026)
 
-Al revisar la traza después del evento corregimos este README. El juez leyó el formulario abierto, no un camino independiente. En la V3, la guarda de «un solo guardado» bloqueó el «Confirmar» en apps que guardan en dos pasos; en al menos una tarea el agente pudo reportar como terminado un cambio sin confirmar. No se pudo comprobar, porque el panel no muestra casos.
+Al revisar la traza después del evento corregimos este README y `docs/INCIDENTE.md`. El juez leyó el formulario abierto, no un camino independiente. En la V3, la guarda de «un solo guardado» bloqueó el «Confirmar» en apps que guardan en dos pasos; en al menos una tarea el agente pudo reportar como terminado un cambio sin confirmar. No se pudo comprobar, porque el panel no muestra casos.
