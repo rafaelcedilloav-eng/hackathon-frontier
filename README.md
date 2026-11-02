@@ -1,6 +1,6 @@
 # AETHER Operador · Frontier CDMX 26 · Reto 2
 
-Agente que **opera por pantalla (VNC)** sistemas de gestión sin API ni documentación, y ejecuta tareas en lenguaje natural en apps que nunca ha visto. Su regla: responde `terminada` solo si el juez confirma lo pedido contra lo que leyó en pantalla; si no puede confirmarlo, o la tarea es ambigua, peligrosa o imposible, responde `fallida` con el dato que lo explica. En la V3 esa regla tuvo un hueco (ver Errata).
+Agente que **opera por pantalla (VNC)** sistemas de gestión sin API ni documentación, y ejecuta tareas en lenguaje natural en apps que nunca ha visto. Su regla: al escribir datos, responde `terminada` solo si el juez confirma lo pedido contra lo que leyó en pantalla (consultar y exportar no pasan por el juez); si no puede confirmarlo, o la tarea es ambigua, peligrosa o imposible, responde `fallida` con el dato que lo explica. En la V3 esa regla tuvo un hueco (ver Errata).
 
 > Todo el código de este repo se escribió durante el evento (31-oct-2026).
 
@@ -108,7 +108,7 @@ La V1 se diagnosticó tarea por tarea con `GET /tasks/{id}` del propio servidor.
 La app cambió a las 15:00, avisado por ticket: **botones movidos, etiquetas distintas y un modal nuevo al abrir**.
 - **Botones y etiquetas ya los resistía:** el agente no guarda posiciones entre tareas, mira la pantalla en cada paso y la guarda decide por la *función* del control (guardar, buscar, exportar), no por su texto ni su lugar.
 - **El modal era el hueco:** ahora los ojos cierran cualquier aviso que tape la app (`cerrar_aviso`), en todas las fases incluida la verificación, sin tratar su texto como orden. Cerrarlo no gasta pasos (tope de 5 por tarea) y queda en la traza como `aviso cerrado: <título>`.
-- **Visto en producción:** el cambio lo supimos por el ticket, no por un detector propio. El modal se vio por primera vez en la validación 2, ya sobre el tema nuevo: la traza registra el aviso «Novedades de la versión 4» cerrado **56 veces**, y las tareas siguieron.
+- **Visto en producción:** el cambio lo supimos por el ticket, no por un detector propio. El modal se vio por primera vez en la validación 2, ya sobre el tema nuevo: la traza registra el aviso «Novedades de la versión 4» cerrado **54 veces**, y las tareas siguieron.
 - **Segunda adaptación:** el modal también reaparece después de guardar. Ahora, tras guardar, el agente cierra el aviso y **vuelve a leer el formulario** antes de navegar (commit `24b81f9`).
 
 Detalle completo en [`docs/INCIDENTE.md`](docs/INCIDENTE.md) (commit `fb3a1cc`).
